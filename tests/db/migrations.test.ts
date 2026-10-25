@@ -9,8 +9,8 @@ import {
   createWorkingCopy,
   openWorkingDatabase,
   ORIGINAL_DATABASE_PATH,
-} from '../../src/db/connection.ts';
-import { createMigrator } from '../../src/db/migrations.ts';
+} from '../../src/infrastructure/sqlite/connection.ts';
+import { createMigrator } from '../../src/infrastructure/sqlite/migrations.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
 
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -55,7 +55,11 @@ describe('migrations', () => {
   it('apply to a copy and leave the original untouched', async () => {
     const originalHash = sha256(ORIGINAL_DATABASE_PATH);
 
-    expect(await latest()).toEqual(['001_seller_and_offer_keys.ts', '002_marketplace_seller.ts']);
+    expect(await latest()).toEqual([
+      '001_seller_and_offer_keys.ts',
+      '002_marketplace_seller.ts',
+      '003_product_exact_match_index.ts',
+    ]);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
 
@@ -142,13 +146,33 @@ describe('migrations', () => {
   it('roll back only the marketplace seller, keeping the 001 schema', async () => {
     await latest();
 
-    await migrator.migrate.down();
+    await migrator.migrate.down(); // 003
+    await migrator.migrate.down(); // 002
 
     withDatabase((db) => {
       expect(db.prepare('SELECT COUNT(*) FROM Seller').pluck().get()).toBe(0);
       expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(0);
     });
-    expect(await latest()).toEqual(['002_marketplace_seller.ts']);
+    expect(await latest()).toEqual([
+      '002_marketplace_seller.ts',
+      '003_product_exact_match_index.ts',
+    ]);
+  });
+
+  it('roll back only the exact-match index', async () => {
+    const productIndexes = () =>
+      withDatabase((db) =>
+        db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'Product'")
+          .pluck()
+          .all(),
+      );
+    await latest();
+    expect(productIndexes()).toEqual(['IX_Product_Name_Brand_Category']);
+
+    await migrator.migrate.down();
+
+    expect(productIndexes()).toEqual([]);
   });
 });
 

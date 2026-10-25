@@ -14,8 +14,9 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:migrate": "tsx src/db/cli.ts",
-    "db:reset": "tsx src/db/cli.ts --reset"
+    "db:migrate": "tsx src/cli/db.ts",
+    "db:reset": "tsx src/cli/db.ts --reset",
+    "import": "tsx src/cli/import.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

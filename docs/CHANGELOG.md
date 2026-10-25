@@ -61,3 +61,65 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - O ID é atribuído pelo banco, então guardá-lo numa configuração cria duas fontes da verdade.
     - A proposta é uma coluna `Seller.IsMarketplace` com índice único parcial. A decisão foi adiada pelo usuário e registrada como pendente no `CLAUDE.md`.
 23. **Commit e push** da migração 002 (seller `Marketplace`), do plano 003 e da documentação atualizada.
+24. **`CLAUDE.md`:** a decisão pendente sobre o marketplace foi ajustada. Como a 002 já foi publicada, a coluna `IsMarketplace` precisaria de uma migração 003.
+25. **Importação, incremento 1 (match exato).** Plano em `docs/plans/004-import-exact-match.md`.
+    - `src/import/`:
+      - `entries.ts` lê e valida o arquivo;
+      - `exact-match.ts` monta o índice em memória, em que nulo é igual a nulo e uma chave ambígua nunca casa;
+      - `catalog.ts` reúne as queries parametrizadas;
+      - `import-entries.ts` orquestra tudo numa transação e monta o relatório;
+      - `cli.ts` implementa o script `npm run import`.
+    - **Regras:**
+      - itens sem match exato ficam `unmatched` e não são gravados nem criam produto;
+      - um SKU que já aponta para outro produto vira `conflict` e não é sobrescrito;
+      - reimportar resulta em `alreadyLinked`;
+      - o nome do seller do marketplace é rejeitado.
+    - **Resultado com o arquivo real:** 200 ligados e 69 pendentes. Na segunda execução, 200 `alreadyLinked`.
+    - 57 testes no total. Novos: `tests/import/*` e o utilitário `tests/helpers/working-database.ts`.
+    - `README.md` e `CLAUDE.md` foram atualizados.
+26. **Camadas e modelo de domínio rico.** Plano em `docs/plans/005-layered-domain-model.md`. Pedido do usuário: código mais orientado a objetos, separado em camadas, sem objetos anêmicos e com testes sem mocks.
+    - **Camadas:** `src/domain/`, `src/application/` (`ImportCatalog`), `src/infrastructure/sqlite/` e `src/infrastructure/file/`, e `src/cli/`. O `src/db/` foi movido para `infrastructure/sqlite` e `cli/db.ts`, e o `src/import/` foi apagado.
+    - **As regras foram para os objetos:**
+      - `Seller.offer()` decide entre `linked`, `alreadyLinked` e `conflict` (antes isso era feito por `ON CONFLICT` e uma conferência no SQL);
+      - `SellerName` cuida da comparação e do nome reservado;
+      - `Catalog` faz o match exato e trata a ambiguidade;
+      - `SellerProductEntry.parse()` valida;
+      - `ImportReport.record*()` registra os resultados.
+    - **A dependência invertida foi corrigida:** `MARKETPLACE_SELLER_NAME` agora é do domínio, a migração 002 mantém o próprio valor literal, e um teste garante que os dois são iguais.
+    - **Testes:** 86, reorganizados por camada e todos sem mocks. O domínio é testado diretamente; repositórios, aplicação e aceitação rodam contra o SQLite real.
+    - **Comportamento inalterado:** 200 ligados e 69 pendentes, com a importação idempotente.
+    - `README.md` ganhou a seção "Arquitetura" e a nova estrutura. `CLAUDE.md` também foi atualizado. O plano 004 registra que foi substituído.
+27. **Importação com desenho escalável.** Plano em `docs/plans/006-scalable-import.md`. O usuário reavaliou a transação única: o desenho deve se sustentar com um banco de produção e com volume, e o SQLite é só o substituto local.
+    - **Transações por lote** (`batchSize`, 500 por padrão, `--batch-size=N` no CLI). Uma falha desfaz só o lote em curso e interrompe a importação. O relatório registra os lotes confirmados e a falha. Rodar de novo completa o trabalho.
+    - **O catálogo é consultado por índice, item a item.** A migração 003 cria `IX_Product_Name_Brand_Category`. `ExactProductMatcher` decide entre match e ambiguidade a partir de até 2 candidatos. O `Catalog` em memória foi removido.
+    - **Agregados menores:** `Seller` ficou com a identidade e as regras de nome, e `Offer.outcomeGiven()` decide entre ligar, já ligado e conflito olhando só a oferta existente daquele SKU.
+    - **Segurança com concorrência:** `OfferRepository.addIfAbsent` usa `ON CONFLICT DO NOTHING` e devolve a oferta existente, e `SellerRepository.save` faz "insere se não existir" e lê o Id de volta.
+    - **Revisões registradas:** a `data-analysis §4` (item 12) e os planos 004 (decisões 3 e 7) e 005 receberam notas.
+    - **Testes:** 96, sem mocks.
+    - `README.md` e `CLAUDE.md` foram atualizados com as garantias, a evolução prevista e a migração 003.
+28. **Simplificação temporária: uma transação por item, sem lote.** Pedido do usuário. Registrado como desvio no plano 006.
+    - `ImportCatalog` processa cada item na própria transação. O resultado entra no relatório só depois da confirmação. Uma falha desfaz o item, é registrada como `failure { index, message }` e interrompe a importação.
+    - Saíram a opção `batchSize`, o `--batch-size` do CLI e `committedBatches`/`recordCommittedBatch` do relatório, que agora usa `recordCommitted` e `recordFailure`.
+    - **Custo aceito:** uma confirmação por item, sem a diluição que o lote oferece em volume.
+    - **Testes:** 93. Os de lote foram trocados por testes de falha e retomada por item.
+    - `README.md` e `CLAUDE.md` foram atualizados.
+29. **Simplificação temporária: só contagens no log, sem relatório detalhado.** Pedido do usuário ("baby steps"). O relatório volta quando todas as regras estiverem implementadas.
+    - `ImportReport` foi removido e entrou `src/domain/import-summary.ts` (`ImportSummary`), com as contagens de `linked`, `alreadyLinked`, `conflict`, `unmatched` e `rejected`, mais a falha.
+    - `ImportCatalog.importItem` agora devolve o resultado do item (`ItemOutcome`), contado só depois da confirmação.
+    - O CLI deixou de gravar `output/import-report.json` e mostra as contagens no log.
+    - **Custo registrado:** quais itens ficaram pendentes, em conflito ou rejeitados (e por quê) deixa de aparecer. Ficou como decisão pendente no `CLAUDE.md`.
+    - **Testes:** 97. Os da aplicação e da aceitação verificam o banco. Entrou `tests/domain/import-summary.test.ts`.
+    - `README.md`, `CLAUDE.md` e o plano 006 foram atualizados. A referência à "migração 003" para `IsMarketplace` virou "nova migração", porque a 003 agora é o índice.
+30. **Simplificação dos tipos.** Plano em `docs/plans/007-simplify-types.md`. O usuário achou o código complicado. A análise mostrou cerca de 25 tipos, muitos deles cerimônia: interfaces com uma única implementação e sem mocks, embrulhos de uma linha, classes sem comportamento e restos de reescritas.
+    - **Ficaram 5 classes:**
+      - `SellerProductEntry` (`parse` e `isFromMarketplace`, absorvendo o `SellerName`);
+      - `Offer` (`outcomeGiven(existingProductId)`);
+      - `ImportSummary`;
+      - `ImportCatalog`, em que a regra de ambiguidade virou uma linha;
+      - `CatalogDatabase`, com todo o SQL: `transaction`, `findProductIds`, `findOrCreateSeller` e `addOfferIfAbsent`.
+    - **Uma função:** `readImportFile`.
+    - **Removidos:** `ports.ts`, `product.ts`, `seller.ts`, `seller-name.ts`, `exact-product-matcher.ts`, os três repositórios, `unit-of-work.ts` e `json-entry-source.ts`.
+    - **Comportamento e desenho escalável mantidos:** consulta por índice, transação por item, "insere se não existir".
+    - **Testes:** 87, sem mocks, contra o SQLite real.
+    - `README.md` (arquitetura e estrutura) e `CLAUDE.md` foram atualizados, e os planos 005 e 006 registram a simplificação.
+31. **Commit e push** da importação por match exato (planos 004 a 007), da migração 003 e da documentação.

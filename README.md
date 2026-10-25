@@ -5,7 +5,13 @@ Sistema que consolida produtos enviados por vários sellers no catálogo de um m
 - **Entrada:** `data/ProductEntry.json`, com 269 itens de 20 sellers.
 - **Catálogo:** `data/catalog.db` (SQLite), com 975 produtos.
 
-> **Status:** schema e processo de migração prontos e testados. A importação (leitura do arquivo, matching e gravação das ofertas) é o próximo passo. O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
+> **Status:** a importação está em construção, por incrementos.
+>
+> - O **incremento 1 (match exato)** está pronto: liga os 200 itens iguais em nome, marca e categoria a um produto do catálogo.
+> - Os outros 69 itens ficam **pendentes**, sem gravação, até as próximas etapas da cascata.
+> - Por enquanto, a importação registra só as **contagens** de cada resultado no log. O relatório detalhado item a item volta quando todas as regras estiverem implementadas.
+>
+> O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Como rodar
 
@@ -14,6 +20,7 @@ Requisitos: Node 22 ou superior (veja `.nvmrc`) e npm.
 ```bash
 npm install
 npm run db:reset       # copia data/catalog.db para output/ e aplica as migrações na cópia
+npm run import         # importa data/ProductEntry.json na cópia e mostra as contagens no log
 npm test               # testes (vitest)
 npm run typecheck      # checagem de tipos (tsc)
 ```
@@ -44,6 +51,7 @@ O schema original não acomodava os dados: `SellerProductId` era `INTEGER`, mas 
 
 - [`001`](migrations/001_seller_and_offer_keys.ts) altera o schema, criando a tabela `Seller` e a nova chave das ofertas.
 - [`002`](migrations/002_marketplace_seller.ts) é uma migração de dados: cria o seller `Marketplace` e uma oferta dele para cada um dos 975 produtos existentes.
+- [`003`](migrations/003_product_exact_match_index.ts) cria o índice `(Name, Brand, Category)` em `Product`, usado pelo match exato.
 
 O schema resultante:
 
@@ -75,23 +83,73 @@ O desafio tem ambiguidades intencionais. Cada decisão abaixo tem a justificativ
 | Alterações no banco                       | Só por migrações versionadas (Knex), testadas numa cópia                                                    | O banco original é a entrada do desafio e precisa permanecer reproduzível.                                                                                                                                                                                                                       |
 | Produtos do catálogo atual                | O próprio marketplace é um seller (`Marketplace`) e oferta todos eles. O código da oferta é o `Product.Id`. | A empresa já vendia todo o catálogo antes de virar marketplace. Sem isso, 777 produtos ficariam sem nenhum seller. **Limitação:** o seller é identificado pelo nome, então um seller externo chamado "Marketplace" seria confundido com ele. ([plano 003](docs/plans/003-marketplace-seller.md)) |
 
-## Abordagem de matching (planejada)
+## Importação e matching
 
-Uma cascata, do critério mais rígido para o mais tolerante, gravando em cada oferta o motivo do match ([estudo §5](docs/analysis/entity-resolution-study.md)):
+A importação segue uma cascata, do critério mais rígido para o mais tolerante ([estudo §5](docs/analysis/entity-resolution-study.md)):
 
-1. Validar a entrada.
-2. Normalizar o nome (caixa, acentos, espaços e aspas), preservando números e códigos de modelo.
-3. Match exato pelo nome normalizado.
-4. Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
-5. Sem match confiável: criar o produto.
+1. ✅ **Validar a entrada.** `Id`, `SellerName` e `Name` precisam ser texto não vazio. `Brand` e `Category` podem ser nulos. Itens inválidos são contados como rejeitados.
+2. ✅ **Match exato** de nome, marca e categoria (nulo igual a nulo), por uma consulta indexada item a item. Se dois produtos têm os mesmos atributos, o match é ambíguo e não casa.
+3. ⏳ Normalizar o nome (caixa, acentos, espaços e aspas), preservando números e códigos de modelo, e tentar de novo.
+4. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
+5. ⏳ Sem match confiável: criar o produto.
+
+**Garantias atuais:**
+
+- **Uma transação curta por item.** Uma falha técnica desfaz só o item em curso, interrompe a importação e aparece no log, com o índice do item. Os itens anteriores continuam gravados. _Simplificação temporária:_ transações por lote diluem o custo de confirmação em volumes grandes e podem voltar só no caso de uso, sem mudar o domínio.
+- **Reimportar não muda nada, e completa uma importação interrompida:** as ofertas já existentes são contadas como `alreadyLinked`.
+- **Segura com importações concorrentes:** o banco arbitra. Seller e oferta são gravados com "insere se não existir", e quem perde a corrida reavalia contra o que já está gravado, sem erro e sem sobrescrever.
+- **Precisão em primeiro lugar:** um SKU que já aponta para outro produto vira `conflict` e não é sobrescrito. Itens sem match ficam `unmatched` e não são gravados, porque criar produtos para eles duplicaria os 68 que existem com outra grafia.
+- **O marketplace não pode ser imitado:** um item cujo seller tenha o nome do marketplace é rejeitado.
+- **Desenho para volume:**
+  - nada é carregado inteiro: nem o catálogo, nem as ofertas de um seller;
+  - cada item faz consultas por chave ou por índice.
+  - Com os dados do desafio, uma versão em memória seria mais rápida. A escolha troca desempenho no caso pequeno por um desenho que se sustenta no caso grande.
+- **Detalhes:** [plano 004](docs/plans/004-import-exact-match.md) (primeira versão) e [plano 006](docs/plans/006-scalable-import.md) (desenho escalável).
+
+**Evolução prevista, não implementada:**
+
+- leitura do arquivo em fluxo (NDJSON) em vez de um array JSON único;
+- paralelismo por seller;
+- Postgres no lugar do SQLite;
+- busca de candidatos para o matching aproximado, em vez de comparar com o catálogo inteiro.
+
+## Arquitetura
+
+O código é organizado em três camadas, com poucos tipos:
+
+```
+cli/import.ts ─► ImportCatalog            (application: o fluxo, uma transação por item)
+                   ├─► SellerProductEntry (domain: valida o item; nome reservado do marketplace)
+                   ├─► Offer              (domain: ligado, já ligado ou conflito; nunca sobrescreve)
+                   ├─► ImportSummary      (domain: contagens por resultado)
+                   └─► CatalogDatabase    (infrastructure: todo o SQL, por chave ou índice)
+```
+
+- **As regras ficam nos objetos que têm os dados:**
+  - `SellerProductEntry.parse()` e `isFromMarketplace()`;
+  - `Offer.outcomeGiven()`;
+  - a regra de ambiguidade (só um candidato casa) é uma linha em `ImportCatalog`.
+- **O domínio não tem SQL nem importa nada de fora dele.**
+- **Sem interfaces "por precaução".** A aplicação depende da classe concreta `CatalogDatabase`. Uma interface só se justifica quando há uma segunda implementação ou um mock, e aqui não há nenhum dos dois.
+- **Testes sem mocks:**
+  - o domínio é testado diretamente;
+  - `CatalogDatabase`, a aplicação e a aceitação rodam contra uma cópia real do SQLite, migrada num diretório temporário.
+
+Detalhes em [plano 007](docs/plans/007-simplify-types.md). Os planos 005 e 006 registram a versão anterior, mais carregada, e por que ela foi simplificada.
 
 ## Estrutura do repositório
 
 ```
 data/            entrada original do desafio (somente leitura)
 migrations/      migrações de schema (Knex)
-src/db/          conexão, configuração das migrações e CLI do banco
-tests/           testes (vitest)
+src/
+  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary
+  application/   caso de uso ImportCatalog
+  infrastructure/
+    sqlite/      CatalogDatabase (todo o SQL), conexão e migrações
+    import-file  leitura do arquivo JSON
+  cli/           comandos db:migrate, db:reset e import
+tests/           domain/, infrastructure/, application/, acceptance/ e db/ (vitest, sem mocks)
 docs/
   analysis/      análise dos dados e estudo de técnicas de entity resolution
   plans/         planos de cada etapa, com decisões e desvios

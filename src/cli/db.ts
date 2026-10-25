@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
-import { createWorkingCopy, WORKING_DATABASE_PATH } from './connection.ts';
-import { createMigrator } from './migrations.ts';
+import { createWorkingCopy, WORKING_DATABASE_PATH } from '../infrastructure/sqlite/connection.ts';
+import { createMigrator } from '../infrastructure/sqlite/migrations.ts';
 
-// Usage: tsx src/db/cli.ts [--reset]
+// Usage: tsx src/cli/db.ts [--reset]
 // --reset recreates the working copy from the original before migrating.
 const reset = process.argv.includes('--reset');
 

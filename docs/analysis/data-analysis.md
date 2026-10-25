@@ -225,7 +225,7 @@ Depois do matching:
 | 9 | Variações de marca, inclusive dentro do catálogo | Comparar marca normalizada (sem espaços, pontuação e caixa), com nulo compatível com nulo |
 | 10 | Categoria pouco confiável | Usar como desempate, nunca como bloqueio |
 | 11 | Chave estrangeira não verificada | `PRAGMA foreign_keys = ON` em cada conexão |
-| 12 | Sem índices | Índice no nome normalizado, ou índice em memória, já que o catálogo é pequeno |
+| 12 | Sem índices | **Revisto (plano 006):** consulta indexada por item (migração 003, `(Name, Brand, Category)`), porque o desenho precisa se sustentar com volume. A sugestão original era um índice em memória, por o catálogo ser pequeno. |
 | 13 | Nenhum produto legítimo novo no arquivo | Criar dados de teste próprios para o caminho "produto novo", incluindo dois sellers enviando o mesmo produto novo no mesmo arquivo |
 | 14 | 777 produtos sem seller | **Decidido:** seller `Marketplace` com uma oferta para cada produto existente (migração 002) |
 
