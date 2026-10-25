@@ -1,0 +1,28 @@
+# Dependencies & environments
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Build & test artifacts
+dist/
+build/
+coverage/
+.pytest_cache/
+
+# SQLite runtime files (the original data/catalog.db is tracked as input)
+*.db-journal
+*.db-wal
+*.db-shm
+output/
+
+# Environment & editor
+.env
+.env.*
+.idea/
+.vscode/
+.DS_Store
+
+# Confidential VTEX documents (kept locally only)
+docs/*.pdf
