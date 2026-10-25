@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3';
 import type { Offer } from '../../domain/offer.ts';
-import type { SellerProductEntry } from '../../domain/seller-product-entry.ts';
 
 // All the SQL the import needs. Every query is parameterized (the import file carries
 // seller-provided text) and looks rows up by key or index, never by loading a whole table.
@@ -13,19 +12,16 @@ export class CatalogDatabase {
     return this.db.transaction(work)();
   }
 
-  // Up to `limit` products whose name is the entry's up to spelling (accents, case, inch
-  // marks, spacing), with the same brand and category. IS treats null as equal to null;
-  // the lookup is served by IX_Product_NormalizedName_Brand_Category.
-  findProductIdsByNormalizedName(
-    { normalizedName, brand, category }: SellerProductEntry,
+  // Up to `limit` products whose name is the given normalized name, with their brand for
+  // the caller to compare. Served by the NormalizedName prefix of
+  // IX_Product_NormalizedName_Brand_Category, which also covers Brand.
+  findProductsByNormalizedName(
+    normalizedName: string,
     limit: number,
-  ): number[] {
+  ): { id: number; brand: string | null }[] {
     return this.db
-      .prepare(
-        'SELECT Id FROM Product WHERE NormalizedName = ? AND Brand IS ? AND Category IS ? LIMIT ?',
-      )
-      .pluck()
-      .all(normalizedName, brand, category, limit) as number[];
+      .prepare('SELECT Id AS id, Brand AS brand FROM Product WHERE NormalizedName = ? LIMIT ?')
+      .all(normalizedName, limit) as { id: number; brand: string | null }[];
   }
 
   // The Name column is COLLATE NOCASE: a seller is found regardless of case. If another

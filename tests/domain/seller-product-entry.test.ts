@@ -83,3 +83,28 @@ describe('SellerProductEntry.isFromMarketplace', () => {
     expect(MARKETPLACE_SELLER_NAME).toBe(MIGRATION_MARKETPLACE_SELLER_NAME);
   });
 });
+
+describe('SellerProductEntry.hasBrand', () => {
+  const withBrand = (Brand: string | null) => {
+    const entry = SellerProductEntry.parse({ ...valid, Brand });
+    if (!entry) {
+      throw new Error('invalid test entry');
+    }
+    return entry;
+  };
+
+  it('accepts the same brand spelled differently', () => {
+    expect(withBrand("Levi's").hasBrand('Levis')).toBe(true);
+    expect(withBrand('Amazon Basics').hasBrand('AmazonBasics')).toBe(true);
+  });
+
+  it('matches a missing brand only with a missing brand', () => {
+    expect(withBrand(null).hasBrand(null)).toBe(true);
+    expect(withBrand(null).hasBrand('Samsung')).toBe(false);
+    expect(withBrand('Samsung').hasBrand(null)).toBe(false);
+  });
+
+  it('refuses a different brand', () => {
+    expect(withBrand('Samsung').hasBrand('Apple')).toBe(false);
+  });
+});

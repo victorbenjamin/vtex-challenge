@@ -222,8 +222,8 @@ Depois do matching:
 | 6 | Espaços, acentos, aspas e números | Chave normalizada que preserva números e pontos decimais |
 | 7 | Traduções | Dicionário de sinônimos, ou fuzzy com proteções (número do modelo e marca iguais), com LLM ou embeddings como evolução |
 | 8 | Falsos positivos no catálogo (Men/Women…) | Não usar um limite fixo sozinho. Exigir que números e palavras de variante sejam iguais e que as marcas sejam compatíveis. |
-| 9 | Variações de marca, inclusive dentro do catálogo | Comparar marca normalizada (sem espaços, pontuação e caixa), com nulo compatível com nulo |
-| 10 | Categoria pouco confiável | Usar como desempate, nunca como bloqueio |
+| 9 | Variações de marca, inclusive dentro do catálogo | **Decidido (plano 009):** marca normalizada (sem acentos, caixa, espaços e pontuação), com nulo só igual a nulo, comparada no domínio |
+| 10 | Categoria pouco confiável | **Decidido (plano 009):** a categoria não entra na comparação. O desempate por categoria fica como evolução, porque nenhum caso nos dados precisa dele. |
 | 11 | Chave estrangeira não verificada | `PRAGMA foreign_keys = ON` em cada conexão |
 | 12 | Sem índices | **Revisto (plano 006):** consulta indexada por item (migração 003, `(Name, Brand, Category)`), porque o desenho precisa se sustentar com volume. A sugestão original era um índice em memória, por o catálogo ser pequeno. |
 | 13 | Nenhum produto legítimo novo no arquivo | Criar dados de teste próprios para o caminho "produto novo", incluindo dois sellers enviando o mesmo produto novo no mesmo arquivo |
@@ -237,6 +237,7 @@ Depois do matching:
 |---|---|---|---|---|
 | 1: match exato (plano 004) | 200 | 0 | 69 | 1.175 |
 | 2: + nome normalizado (plano 008) | 263 | 1 (#76, depois da #55) | 5 (#57, #64, #87, #180, #188) | 1.238 |
+| 3: + marca normalizada, sem categoria (plano 009) | 265 | 1 | 3 (#57, #64, #180) | 1.240 |
 
 **Resultado final esperado,** com todas as regras:
 

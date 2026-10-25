@@ -1,3 +1,4 @@
+import { normalizeBrand } from './brand.ts';
 import { normalizeProductName } from './product-name.ts';
 
 // Name of the seller that represents the marketplace itself (created by migration 002).
@@ -40,6 +41,12 @@ export class SellerProductEntry {
 
   get normalizedName(): string {
     return normalizeProductName(this.name);
+  }
+
+  // Whether a catalog brand is this entry's brand, up to spelling. A missing brand only
+  // matches a missing brand.
+  hasBrand(brand: string | null): boolean {
+    return normalizeBrand(this.brand) === normalizeBrand(brand);
   }
 
   // The marketplace's own offers come from the catalog, never from an import file, so an

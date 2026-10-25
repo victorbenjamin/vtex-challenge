@@ -138,3 +138,11 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Resultado igual:** 263 ligados, 1 já ligado, 5 pendentes.
     - `README.md` (a cascata agora tem 4 passos, e a migração 005 entrou) e `CLAUDE.md` foram atualizados.
 35. **Commit e push** do incremento 2 (nome normalizado), das migrações 004 e 005 e da documentação.
+36. **Importação, incremento 3 (variações de marca e categoria).** Plano em `docs/plans/009-brand-category-variants.md`. O usuário escolheu comparar a marca no domínio, sem migração.
+    - `src/domain/brand.ts` (`normalizeBrand`): remove acentos, converte para minúsculas e remove tudo que não é letra ou dígito. `null` continua `null`.
+    - `SellerProductEntry.hasBrand(brand)` compara as marcas normalizadas, com nulo só igual a nulo.
+    - `CatalogDatabase.findProductsByNormalizedName(normalizedName, limit)` substitui `findProductIdsByNormalizedName` e devolve `{ id, brand }`, usando o prefixo do índice da migração 004.
+    - `ImportCatalog.findUniqueProduct`: busca até `CANDIDATE_LIMIT` (50) candidatos, filtra pela marca, e só liga se restar exatamente 1. Se chegar ao teto, o item fica `unmatched`. **A categoria deixou de ser comparada.**
+    - **Resultado:** 265 ligados, 1 já ligado e 3 pendentes (#57, #64, #180), exatamente como o gabarito. 134 testes.
+    - `data-analysis.md` (§4, itens 9 e 10, e §5), `README.md` e `CLAUDE.md` foram atualizados.
+37. **Commit e push** do incremento 3 (variações de marca e categoria) e da documentação.

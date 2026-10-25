@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CANDIDATE_LIMIT } from '../../src/application/import-catalog.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../src/domain/seller-product-entry.ts';
 import {
   createMigratedDatabase,
@@ -174,6 +175,77 @@ describe('ImportCatalog', () => {
         },
       ]),
     ).toMatchObject({ linked: 0, unmatched: 1 });
+  });
+
+  it('links a brand spelled differently', () => {
+    // Catalog #322: Belt Leather Reversible, brand "Levis".
+    expect(
+      countsOf([
+        {
+          Id: 'sku-1',
+          SellerName: 'SportsHub',
+          Name: 'Belt Leather Reversible',
+          Brand: "Levi's",
+          Category: 'Accessories',
+        },
+      ]),
+    ).toMatchObject({ linked: 1 });
+    expect(offersOf('SportsHub')).toEqual([['sku-1', 322]]);
+  });
+
+  it('links regardless of the category', () => {
+    expect(
+      countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Category: 'Phones' }]),
+    ).toMatchObject({ linked: 1 });
+    expect(offersOf('MegaStore')).toEqual([['sku-1', 2]]);
+  });
+
+  it('does not link a missing brand to a product that has one', () => {
+    expect(
+      countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Brand: null }]),
+    ).toMatchObject({ linked: 0, unmatched: 1 });
+  });
+
+  describe('with several catalog products of the same name', () => {
+    const insertProduct = (brand: string | null, category: string) =>
+      Number(
+        db
+          .prepare(
+            'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+          )
+          .run('Yoga Mat Pro', brand, category, 'yoga mat pro').lastInsertRowid,
+      );
+    const yogaMat = (Brand: string | null) => ({
+      Id: 'sku-1',
+      SellerName: 'MegaStore',
+      Name: 'Yoga  Mat Pro',
+      Brand,
+      Category: 'Fitness',
+    });
+
+    it('links the one with the entry brand', () => {
+      insertProduct('Gaiam', 'Fitness');
+      const manduka = insertProduct('Manduka', 'Fitness');
+
+      expect(countsOf([yogaMat('MANDUKA')])).toMatchObject({ linked: 1 });
+      expect(offersOf('MegaStore')).toEqual([['sku-1', manduka]]);
+    });
+
+    it('never links when they share the brand, even with different categories', () => {
+      insertProduct('Gaiam', 'Fitness');
+      insertProduct('Gaiam', 'Outdoor');
+
+      expect(countsOf([yogaMat('Gaiam')])).toMatchObject({ linked: 0, unmatched: 1 });
+    });
+
+    it(`never links when there are ${CANDIDATE_LIMIT} or more to compare`, () => {
+      for (let i = 0; i < CANDIDATE_LIMIT - 1; i++) {
+        insertProduct(`Brand ${i}`, 'Fitness');
+      }
+      insertProduct('Gaiam', 'Fitness');
+
+      expect(countsOf([yogaMat('Gaiam')])).toMatchObject({ linked: 0, unmatched: 1 });
+    });
   });
 
   it('rejects invalid items without stopping the import', () => {

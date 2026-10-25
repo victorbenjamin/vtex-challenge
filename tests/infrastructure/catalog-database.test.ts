@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Offer } from '../../src/domain/offer.ts';
-import { SellerProductEntry } from '../../src/domain/seller-product-entry.ts';
+import { normalizeProductName } from '../../src/domain/product-name.ts';
 import { CatalogDatabase } from '../../src/infrastructure/sqlite/catalog-database.ts';
 import { createMigratedDatabase, type MigratedDatabase } from '../helpers/working-database.ts';
 
@@ -18,20 +18,6 @@ beforeEach(async () => {
 afterEach(() => {
   migrated.cleanup();
 });
-
-const entry = (Name: string, Brand: string | null, Category: string | null) => {
-  const parsed = SellerProductEntry.parse({
-    Id: 'sku',
-    SellerName: 'MegaStore',
-    Name,
-    Brand,
-    Category,
-  });
-  if (!parsed) {
-    throw new Error('invalid test entry');
-  }
-  return parsed;
-};
 
 describe('CatalogDatabase.findOrCreateSeller', () => {
   const countSellers = (name: string) =>
@@ -114,30 +100,35 @@ describe('CatalogDatabase.transaction', () => {
   });
 });
 
-describe('CatalogDatabase.findProductIdsByNormalizedName', () => {
-  const find = (attributes: SellerProductEntry) =>
-    catalog.findProductIdsByNormalizedName(attributes, 2);
+describe('CatalogDatabase.findProductsByNormalizedName', () => {
+  const find = (name: string) =>
+    catalog.findProductsByNormalizedName(normalizeProductName(name), 50);
 
   it.each([
-    ['the exact name', entry('Smartphone Galaxy S23', 'Samsung', 'Electronics'), [2]],
-    ['a double space', entry('Smartphone  Galaxy S23', 'Samsung', 'Electronics'), [2]],
-    ['other case', entry('smartphone galaxy s23', 'Samsung', 'Electronics'), [2]],
-    ['an accent', entry('Câmera Canon EOS R6', 'Canon', 'Photography'), [18]],
-    ['two single quotes as inches', entry("Tablet iPad Pro 12.9''", 'Apple', 'Tablets'), [14]],
-    ['a missing inch mark', entry('Smart TV Samsung 55', 'Samsung', 'Electronics'), [10]],
-    ['a null brand', entry('Cable  Organizer Kit', null, 'Accessories'), [113]],
-    ['null brand and category', entry('Crepe Maker', null, null), [81]],
-  ])('finds the product given %s', (_, attributes, ids) => {
-    expect(find(attributes)).toEqual(ids);
+    ['the exact name', 'Smartphone Galaxy S23', [{ id: 2, brand: 'Samsung' }]],
+    ['a double space', 'Smartphone  Galaxy S23', [{ id: 2, brand: 'Samsung' }]],
+    ['an accent', 'Câmera Canon EOS R6', [{ id: 18, brand: 'Canon' }]],
+    ['two single quotes as inches', "Tablet iPad Pro 12.9''", [{ id: 14, brand: 'Apple' }]],
+    ['a missing inch mark', 'Smart TV Samsung 55', [{ id: 10, brand: 'Samsung' }]],
+    ['a product without brand', 'Cable  Organizer Kit', [{ id: 113, brand: null }]],
+  ])('finds the product and its brand given %s', (_, name, products) => {
+    expect(find(name)).toEqual(products);
   });
 
-  it.each([
-    ['brand variant', entry('Belt Leather Reversible', "Levi's", 'Accessories')],
-    ['category variant', entry('Camera Canon EOS R6', 'Canon', 'Photo')],
-    ['translation', entry('Roteador WiFi 6 TP-Link', 'TP-Link', 'Networking')],
-    ['null spelled as text', entry('Cable Organizer Kit', 'null', 'Accessories')],
-  ])('finds nothing for a %s', (_, attributes) => {
-    expect(find(attributes)).toEqual([]);
+  it('finds nothing for a translated name', () => {
+    expect(find('Roteador WiFi 6 TP-Link')).toEqual([]);
+  });
+
+  it('returns every product with the name, whatever its brand and category', () => {
+    db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    ).run('Smartphone Galaxy S23', 'Other Brand', 'Toys', 'smartphone galaxy s23');
+
+    expect(
+      find('Smartphone Galaxy S23')
+        .map(({ brand }) => brand)
+        .sort(),
+    ).toEqual(['Other Brand', 'Samsung']);
   });
 
   it('respects the limit', () => {
@@ -148,15 +139,15 @@ describe('CatalogDatabase.findProductIdsByNormalizedName', () => {
       insert.run('Limit Probe', null, null, 'limit probe');
     }
 
-    expect(find(entry('Limit Probe', null, null))).toHaveLength(2);
+    expect(catalog.findProductsByNormalizedName('limit probe', 2)).toHaveLength(2);
   });
 
   it('is served by the normalized-name index instead of a table scan', () => {
     const plan = db
       .prepare(
-        'EXPLAIN QUERY PLAN SELECT Id FROM Product WHERE NormalizedName = ? AND Brand IS ? AND Category IS ? LIMIT ?',
+        'EXPLAIN QUERY PLAN SELECT Id AS id, Brand AS brand FROM Product WHERE NormalizedName = ? LIMIT ?',
       )
-      .all('x', null, null, 2) as { detail: string }[];
+      .all('x', 2) as { detail: string }[];
 
     expect(plan.map(({ detail }) => detail).join()).toContain(
       'IX_Product_NormalizedName_Brand_Category',

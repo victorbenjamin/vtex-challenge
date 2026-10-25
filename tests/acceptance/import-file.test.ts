@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ImportSummary } from '../../src/domain/import-summary.ts';
+import { normalizeBrand } from '../../src/domain/brand.ts';
 import { normalizeProductName } from '../../src/domain/product-name.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../src/domain/seller-product-entry.ts';
 import { readImportFile } from '../../src/infrastructure/import-file.ts';
@@ -13,10 +14,10 @@ import {
   type MigratedDatabase,
 } from '../helpers/working-database.ts';
 
-// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, for the second
-// import increment: exact matches (first row, 200 items) plus names that differ only in
-// spelling (second row, 64 items). Item #55 "Câmera" and #76 "Camera" share seller and Id,
-// so #76 is already linked. The other 5 items need rules not implemented yet.
+// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, for the third
+// import increment: the first three rows of §3.1 (exact names, names that differ only in
+// spelling, and brand or category variants). Item #55 "Câmera" and #76 "Camera" share
+// seller and Id, so #76 is already linked. The other 3 items need rules not implemented yet.
 
 const FILE = 'data/ProductEntry.json';
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -37,13 +38,13 @@ afterAll(() => {
   migrated.cleanup();
 });
 
-describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
-  it('links 263 items and leaves 5 pending', () => {
+describe(`importing ${FILE} (name, spelling, brand and category variants)`, () => {
+  it('links 265 items and leaves 3 pending', () => {
     expect(summary.counts()).toEqual({
-      linked: 263,
+      linked: 265,
       alreadyLinked: 1,
       conflict: 0,
-      unmatched: 5,
+      unmatched: 3,
       rejected: 0,
     });
   });
@@ -77,6 +78,20 @@ describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
       'uddd0000-eeee-4111-ffff-aaaa22223333',
       10,
     ],
+    [
+      'category',
+      '#87 Camera Canon EOS R6 (Photo)',
+      'GardenStore',
+      'e6e6e5e5-f6f6-4a7a-b8b8-c9c9c9c9c9c9',
+      18,
+    ],
+    [
+      'brand',
+      "#188 Belt Leather Reversible (Levi's)",
+      'SportsHub',
+      '88990055-1122-4334-4556-677889900112',
+      322,
+    ],
   ])('links the %s case %s', (_, __, sellerName, sku, productId) => {
     expect(
       db
@@ -98,11 +113,11 @@ describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
     ).toBe(20);
   });
 
-  it('stores 1,238 offers: 975 from the marketplace plus 263 imported', () => {
-    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1238);
+  it('stores 1,240 offers: 975 from the marketplace plus 265 imported', () => {
+    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1240);
   });
 
-  it('links every imported offer to a product with the same normalized name, brand and category', () => {
+  it('links every imported offer to a product with the same normalized name and brand', () => {
     const items = readImportFile(FILE) as Record<string, string | null>[];
     const itemBySellerSku = new Map(
       items.map((item) => [`${item['SellerName']}|${item['Id']}`, item]),
@@ -110,7 +125,7 @@ describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
     const offers = db
       .prepare(
         `SELECT s.Name AS sellerName, sp.SellerProductId AS sku,
-                p.NormalizedName AS name, p.Brand AS brand, p.Category AS category
+                p.NormalizedName AS name, p.Brand AS brand
          FROM SellerProduct sp
          JOIN Seller s ON s.Id = sp.SellerId
          JOIN Product p ON p.Id = sp.ProductId
@@ -118,13 +133,12 @@ describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
       )
       .all(MARKETPLACE_SELLER_NAME) as Record<string, string | null>[];
 
-    expect(offers).toHaveLength(263);
+    expect(offers).toHaveLength(265);
     for (const offer of offers) {
       const item = itemBySellerSku.get(`${offer['sellerName']}|${offer['sku']}`);
-      expect([offer['name'], offer['brand'], offer['category']]).toEqual([
+      expect([offer['name'], normalizeBrand(offer['brand'] ?? null)]).toEqual([
         normalizeProductName(item?.['Name'] ?? ''),
-        item?.['Brand'],
-        item?.['Category'],
+        normalizeBrand(item?.['Brand'] ?? null),
       ]);
     }
   });
@@ -136,7 +150,7 @@ describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
   it('is idempotent', () => {
     const second = sqliteImportCatalog(db).execute(readImportFile(FILE));
 
-    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 264, unmatched: 5 });
+    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 266, unmatched: 3 });
   });
 
   it('does not create products', () => {

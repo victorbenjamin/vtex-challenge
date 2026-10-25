@@ -9,7 +9,8 @@ Sistema que consolida produtos enviados por vários sellers no catálogo de um m
 >
 > - **Incremento 1 (match exato):** pronto. Liga os 200 itens iguais em nome, marca e categoria.
 > - **Incremento 2 (nome normalizado):** pronto. Liga mais 64 itens cujo nome só difere em espaços, acentos, caixa ou aspas de polegada. O match exato virou um caso particular dele. No arquivo do desafio, o resultado é 263 ligados e 1 já ligado (um reenvio).
-> - Os outros 5 itens ficam **pendentes**, sem gravação, até as próximas etapas da cascata: 2 traduções, uma variação de marca, uma de categoria e o item de teste de SQL injection.
+> - **Incremento 3 (marca e categoria):** pronto. A marca é comparada sem caixa, espaços e pontuação (`Levi's` = `Levis`), e a categoria deixa de ser comparada (`Photo` e `Photography`). Liga mais 2 itens: 265 ligados e 1 já ligado.
+> - Os outros 3 itens ficam **pendentes**, sem gravação, até as próximas etapas: 2 traduções (`Roteador`, `Processador`) e o item de teste de SQL injection.
 > - Por enquanto, a importação registra só as **contagens** de cada resultado no log. O relatório detalhado item a item volta quando todas as regras estiverem implementadas.
 >
 > O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
@@ -93,11 +94,14 @@ O desafio tem ambiguidades intencionais. Cada decisão abaixo tem a justificativ
 A importação segue uma cascata, do critério mais rígido para o mais tolerante ([estudo §5](docs/analysis/entity-resolution-study.md)):
 
 1. ✅ **Validar a entrada.** `Id`, `SellerName` e `Name` precisam ser texto não vazio. `Brand` e `Category` podem ser nulos. Itens inválidos são contados como rejeitados.
-2. ✅ **Match por nome normalizado,** com marca e categoria iguais (nulo igual a nulo), numa consulta indexada item a item.
-   - A normalização remove acentos, ignora caixa, remove as aspas de polegada (`''` e `"`) e junta espaços.
-   - Preserva números, pontos, hífens e barras, porque são o que diferencia modelos.
+2. ✅ **Match por nome normalizado e marca normalizada.**
+   - **Nome:** a normalização remove acentos, ignora caixa, remove as aspas de polegada (`''` e `"`) e junta espaços. Preserva números, pontos, hífens e barras, porque são o que diferencia modelos.
    - **Um nome exatamente igual também casa por aqui:** a normalização não altera o que já é igual. Por isso não existe uma etapa separada de match exato.
-   - Se dois produtos do catálogo têm o mesmo nome normalizado, marca e categoria, o match é **ambíguo** e não casa, mesmo para um nome escrito exatamente como um deles. É uma perda de recall que não existe nos dados atuais, aceita para manter a precisão e uma consulta só.
+   - **Marca:** comparada sem acentos, caixa, espaços e pontuação (`Levi's` = `Levis`, `Amazon Basics` = `AmazonBasics`). Nulo só casa com nulo.
+   - **Categoria:** não é comparada, porque os sellers a escrevem de forma pouco confiável (`Photo` e `Photography`).
+   - **Como a busca funciona:** uma consulta indexada traz os produtos com aquele nome normalizado (até 50), e o domínio filtra pela marca.
+   - **Exatamente um candidato casa.** Nenhum, vários (ambíguo) ou 50 ou mais (nome genérico demais para decidir) deixam o item pendente.
+   - **Perda de recall aceita:** dois produtos do catálogo com o mesmo nome e marca ficam ambíguos, mesmo com categorias diferentes, ou mesmo para um nome escrito exatamente como um deles. O caso não existe nos dados atuais.
 3. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
 4. ⏳ Sem match confiável: criar o produto.
 
@@ -151,7 +155,7 @@ Detalhes em [plano 007](docs/plans/007-simplify-types.md). Os planos 005 e 006 r
 data/            entrada original do desafio (somente leitura)
 migrations/      migrações de schema (Knex)
 src/
-  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, normalizeProductName
+  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, normalizeProductName, normalizeBrand
   application/   caso de uso ImportCatalog
   infrastructure/
     sqlite/      CatalogDatabase (todo o SQL), conexão e migrações
