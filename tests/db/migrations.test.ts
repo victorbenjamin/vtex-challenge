@@ -12,6 +12,8 @@ import {
 } from '../../src/infrastructure/sqlite/connection.ts';
 import { createMigrator } from '../../src/infrastructure/sqlite/migrations.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
+import { normalizeAtMigration004 } from '../../migrations/004_product_normalized_name.ts';
+import { normalizeProductName } from '../../src/domain/product-name.ts';
 
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -59,6 +61,8 @@ describe('migrations', () => {
       '001_seller_and_offer_keys.ts',
       '002_marketplace_seller.ts',
       '003_product_exact_match_index.ts',
+      '004_product_normalized_name.ts',
+      '005_drop_product_exact_match_index.ts',
     ]);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
@@ -128,6 +132,7 @@ describe('migrations', () => {
   it('roll back to the original schema', async () => {
     const structure = () =>
       withDatabase((db) => ({
+        productColumns: db.pragma('table_info(Product)'),
         columns: db.pragma('table_info(SellerProduct)'),
         foreignKeys: db.pragma('foreign_key_list(SellerProduct)'),
         tables: db
@@ -146,6 +151,8 @@ describe('migrations', () => {
   it('roll back only the marketplace seller, keeping the 001 schema', async () => {
     await latest();
 
+    await migrator.migrate.down(); // 005
+    await migrator.migrate.down(); // 004
     await migrator.migrate.down(); // 003
     await migrator.migrate.down(); // 002
 
@@ -156,23 +163,70 @@ describe('migrations', () => {
     expect(await latest()).toEqual([
       '002_marketplace_seller.ts',
       '003_product_exact_match_index.ts',
+      '004_product_normalized_name.ts',
+      '005_drop_product_exact_match_index.ts',
     ]);
   });
 
-  it('roll back only the exact-match index', async () => {
-    const productIndexes = () =>
-      withDatabase((db) =>
-        db
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'Product'")
-          .pluck()
-          .all(),
-      );
+  it('roll back the Product indexes and column one migration at a time', async () => {
     await latest();
+    expect(productIndexes()).toEqual(['IX_Product_NormalizedName_Brand_Category']);
+
+    await migrator.migrate.down(); // 005
+    expect(productIndexes()).toEqual([
+      'IX_Product_NormalizedName_Brand_Category',
+      'IX_Product_Name_Brand_Category',
+    ]);
+
+    await migrator.migrate.down(); // 004
     expect(productIndexes()).toEqual(['IX_Product_Name_Brand_Category']);
+    expect(productColumnNames()).not.toContain('NormalizedName');
 
-    await migrator.migrate.down();
-
+    await migrator.migrate.down(); // 003
     expect(productIndexes()).toEqual([]);
+  });
+});
+
+const productIndexes = () =>
+  withDatabase((db) =>
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'Product' ORDER BY name DESC",
+      )
+      .pluck()
+      .all(),
+  );
+
+const productColumnNames = () =>
+  withDatabase((db) =>
+    (db.pragma('table_info(Product)') as { name: string }[]).map(({ name }) => name),
+  );
+
+describe('normalized product name (migration 004)', () => {
+  beforeEach(async () => {
+    await latest();
+  });
+
+  it('fills NormalizedName for every product', () => {
+    withDatabase((db) => {
+      expect(
+        db.prepare('SELECT COUNT(*) FROM Product WHERE NormalizedName IS NULL').pluck().get(),
+      ).toBe(0);
+      expect(db.prepare('SELECT NormalizedName FROM Product WHERE Id = 14').pluck().get()).toBe(
+        'tablet ipad pro 12.9',
+      );
+    });
+  });
+
+  it('freezes the same normalization the domain uses, for every catalog name', () => {
+    const names = withDatabase(
+      (db) => db.prepare('SELECT Name FROM Product').pluck().all() as string[],
+    );
+    const edgeCases = ['Câmera  Canon', "Tablet 12.9''", 'Smart TV 55"', '  Ünïcödé  '];
+
+    for (const name of [...names, ...edgeCases]) {
+      expect(normalizeAtMigration004(name)).toBe(normalizeProductName(name));
+    }
   });
 });
 

@@ -231,6 +231,15 @@ Depois do matching:
 
 ## 5. Resultado esperado como teste de aceitação
 
+**Gabaritos por incremento da importação** (conferidos pelos testes de aceitação):
+
+| Incremento | `linked` | `alreadyLinked` | `unmatched` | Ofertas no total |
+|---|---|---|---|---|
+| 1: match exato (plano 004) | 200 | 0 | 69 | 1.175 |
+| 2: + nome normalizado (plano 008) | 263 | 1 (#76, depois da #55) | 5 (#57, #64, #87, #180, #188) | 1.238 |
+
+**Resultado final esperado,** com todas as regras:
+
 A classificação da seção 3.1 serve de gabarito. Com as decisões tomadas (uma oferta por SKU do seller e qualquer ID não vazio aceito), uma execução correta sobre o arquivo deve resultar em:
 - **1 produto novo:** o `Security Test Product` (#180), com a marca gravada literalmente como texto.
 - **0 itens rejeitados.**

@@ -1,3 +1,5 @@
+import { normalizeProductName } from './product-name.ts';
+
 // Name of the seller that represents the marketplace itself (created by migration 002).
 export const MARKETPLACE_SELLER_NAME = 'Marketplace';
 
@@ -34,6 +36,10 @@ export class SellerProductEntry {
       return undefined;
     }
     return new SellerProductEntry(Id, SellerName.trim(), Name, Brand ?? null, Category ?? null);
+  }
+
+  get normalizedName(): string {
+    return normalizeProductName(this.name);
   }
 
   // The marketplace's own offers come from the catalog, never from an import file, so an

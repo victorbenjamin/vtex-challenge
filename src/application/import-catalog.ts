@@ -5,9 +5,10 @@ import type { CatalogDatabase } from '../infrastructure/sqlite/catalog-database.
 
 // Use case: import a seller product file into the catalog.
 //
-// Each valid entry is linked to the catalog product with exactly the same name, brand and
-// category. Entries without an exact match are counted as unmatched and not written:
-// creating products for them would duplicate the many that exist under another spelling.
+// Each valid entry is linked to the catalog product with the same name up to spelling
+// (accents, case, inch marks, spacing) and the same brand and category. Entries that
+// match no product are counted as unmatched and not written: creating products for them
+// would duplicate the many that exist under another spelling.
 //
 // Each item runs in its own transaction. A failing item is rolled back and stops the
 // import; re-running it completes the work, because importing is idempotent.
@@ -38,7 +39,7 @@ export class ImportCatalog {
 
     // Two candidates are enough to tell a unique match from an ambiguous one, and an
     // ambiguous match never links: precision comes before recall.
-    const [productId, ambiguous] = this.catalog.findProductIds(entry, 2);
+    const [productId, ambiguous] = this.catalog.findProductIdsByNormalizedName(entry, 2);
     if (productId === undefined || ambiguous !== undefined) {
       return 'unmatched';
     }

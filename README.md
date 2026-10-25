@@ -7,8 +7,9 @@ Sistema que consolida produtos enviados por vários sellers no catálogo de um m
 
 > **Status:** a importação está em construção, por incrementos.
 >
-> - O **incremento 1 (match exato)** está pronto: liga os 200 itens iguais em nome, marca e categoria a um produto do catálogo.
-> - Os outros 69 itens ficam **pendentes**, sem gravação, até as próximas etapas da cascata.
+> - **Incremento 1 (match exato):** pronto. Liga os 200 itens iguais em nome, marca e categoria.
+> - **Incremento 2 (nome normalizado):** pronto. Liga mais 64 itens cujo nome só difere em espaços, acentos, caixa ou aspas de polegada. O match exato virou um caso particular dele. No arquivo do desafio, o resultado é 263 ligados e 1 já ligado (um reenvio).
+> - Os outros 5 itens ficam **pendentes**, sem gravação, até as próximas etapas da cascata: 2 traduções, uma variação de marca, uma de categoria e o item de teste de SQL injection.
 > - Por enquanto, a importação registra só as **contagens** de cada resultado no log. O relatório detalhado item a item volta quando todas as regras estiverem implementadas.
 >
 > O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
@@ -52,11 +53,15 @@ O schema original não acomodava os dados: `SellerProductId` era `INTEGER`, mas 
 - [`001`](migrations/001_seller_and_offer_keys.ts) altera o schema, criando a tabela `Seller` e a nova chave das ofertas.
 - [`002`](migrations/002_marketplace_seller.ts) é uma migração de dados: cria o seller `Marketplace` e uma oferta dele para cada um dos 975 produtos existentes.
 - [`003`](migrations/003_product_exact_match_index.ts) cria o índice `(Name, Brand, Category)` em `Product`, usado pelo match exato.
+- [`004`](migrations/004_product_normalized_name.ts) cria a coluna `Product.NormalizedName`, preenchida para os produtos existentes, com o índice `(NormalizedName, Brand, Category)`.
+  - O SQLite não consegue remover acentos em SQL, por isso a coluna é calculada em TypeScript.
+  - A migração tem uma **cópia congelada** da normalização, para sempre gravar os mesmos valores, e um teste garante que ela coincide com a do domínio.
+- [`005`](migrations/005_drop_product_exact_match_index.ts) remove o índice da 003. Todo match exato também é um match normalizado, então a importação busca só pelo nome normalizado, e um índice sem uso ainda custaria em toda escrita.
 
 O schema resultante:
 
 ```sql
-Product       (Id, Name, Brand, Category)              -- inalterada
+Product       (Id, Name, Brand, Category, NormalizedName)  -- índice (NormalizedName, Brand, Category)
 Seller        (Id, Name UNIQUE COLLATE NOCASE)         -- nova
 SellerProduct (SellerId, SellerProductId TEXT, ProductId)
               PRIMARY KEY (SellerId, SellerProductId)  -- índice em ProductId
@@ -88,10 +93,13 @@ O desafio tem ambiguidades intencionais. Cada decisão abaixo tem a justificativ
 A importação segue uma cascata, do critério mais rígido para o mais tolerante ([estudo §5](docs/analysis/entity-resolution-study.md)):
 
 1. ✅ **Validar a entrada.** `Id`, `SellerName` e `Name` precisam ser texto não vazio. `Brand` e `Category` podem ser nulos. Itens inválidos são contados como rejeitados.
-2. ✅ **Match exato** de nome, marca e categoria (nulo igual a nulo), por uma consulta indexada item a item. Se dois produtos têm os mesmos atributos, o match é ambíguo e não casa.
-3. ⏳ Normalizar o nome (caixa, acentos, espaços e aspas), preservando números e códigos de modelo, e tentar de novo.
-4. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
-5. ⏳ Sem match confiável: criar o produto.
+2. ✅ **Match por nome normalizado,** com marca e categoria iguais (nulo igual a nulo), numa consulta indexada item a item.
+   - A normalização remove acentos, ignora caixa, remove as aspas de polegada (`''` e `"`) e junta espaços.
+   - Preserva números, pontos, hífens e barras, porque são o que diferencia modelos.
+   - **Um nome exatamente igual também casa por aqui:** a normalização não altera o que já é igual. Por isso não existe uma etapa separada de match exato.
+   - Se dois produtos do catálogo têm o mesmo nome normalizado, marca e categoria, o match é **ambíguo** e não casa, mesmo para um nome escrito exatamente como um deles. É uma perda de recall que não existe nos dados atuais, aceita para manter a precisão e uma consulta só.
+3. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
+4. ⏳ Sem match confiável: criar o produto.
 
 **Garantias atuais:**
 
@@ -143,7 +151,7 @@ Detalhes em [plano 007](docs/plans/007-simplify-types.md). Os planos 005 e 006 r
 data/            entrada original do desafio (somente leitura)
 migrations/      migrações de schema (Knex)
 src/
-  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary
+  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, normalizeProductName
   application/   caso de uso ImportCatalog
   infrastructure/
     sqlite/      CatalogDatabase (todo o SQL), conexão e migrações

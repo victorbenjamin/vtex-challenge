@@ -123,3 +123,18 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Testes:** 87, sem mocks, contra o SQLite real.
     - `README.md` (arquitetura e estrutura) e `CLAUDE.md` foram atualizados, e os planos 005 e 006 registram a simplificação.
 31. **Commit e push** da importação por match exato (planos 004 a 007), da migração 003 e da documentação.
+32. **Plano 008 proposto: match por nome normalizado** (segunda linha da `data-analysis §3.1`, 64 itens). Inclui as regras de normalização, a cascata exato → normalizado, a coluna `Product.NormalizedName` com índice (migração 004) e o gabarito conferido por simulação: 263 ligados, 1 já ligado e 5 pendentes.
+33. **Importação, incremento 2 (nome normalizado).** Plano em `docs/plans/008-normalized-name-match.md`. A decisão da cópia congelada foi confirmada pelo usuário.
+    - `src/domain/product-name.ts` (`normalizeProductName`): remove acentos, converte para minúsculas, remove `''` e `"`, junta espaços. Preserva números, pontos, hífens e barras. `SellerProductEntry.normalizedName` usa essa função.
+    - **Migração 004:** coluna `Product.NormalizedName`, preenchida com a cópia congelada `normalizeAtMigration004`, e índice `(NormalizedName, Brand, Category)`, com `down`.
+    - `CatalogDatabase.findProductIdsByNormalizedName`.
+    - `ImportCatalog.findUniqueProduct` implementa a cascata: o exato primeiro; o normalizado só se o exato não achar nada; ambíguo não casa, em nenhuma etapa.
+    - **Resultado:** 263 ligados, 1 já ligado e 5 pendentes, exatamente como o gabarito. 122 testes.
+    - `data-analysis §5` ganhou os gabaritos por incremento. `README.md` e `CLAUDE.md` foram atualizados.
+34. **Só o match por nome normalizado, sem a etapa exata.** Pedido do usuário depois da análise: todo match exato também é normalizado. A única diferença seria com dois produtos do catálogo que diferem só na grafia, caso que não existe nos dados; aí o item fica ambíguo, com perda de recall e sem risco de ligar ao produto errado. Registrado como desvio no plano 008.
+    - Saíram `CatalogDatabase.findProductIds` e o `ImportCatalog.findUniqueProduct`. O caso de uso faz uma consulta só.
+    - A **migração 005** remove o índice `IX_Product_Name_Brand_Category` (da 003, já publicada), com o `down` recriando-o.
+    - **Testes:** 117. Os casos do exato foram reunidos nos do normalizado, e um teste documenta a perda de recall aceita.
+    - **Resultado igual:** 263 ligados, 1 já ligado, 5 pendentes.
+    - `README.md` (a cascata agora tem 4 passos, e a migração 005 entrou) e `CLAUDE.md` foram atualizados.
+35. **Commit e push** do incremento 2 (nome normalizado), das migrações 004 e 005 e da documentação.

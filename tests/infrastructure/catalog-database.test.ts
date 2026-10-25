@@ -33,51 +33,6 @@ const entry = (Name: string, Brand: string | null, Category: string | null) => {
   return parsed;
 };
 
-describe('CatalogDatabase.findProductIds', () => {
-  it('finds the product with exactly these attributes', () => {
-    expect(
-      catalog.findProductIds(entry('Smartphone Galaxy S23', 'Samsung', 'Electronics'), 2),
-    ).toEqual([2]);
-  });
-
-  it('treats null as equal to null', () => {
-    expect(catalog.findProductIds(entry('Cable Organizer Kit', null, 'Accessories'), 2)).toEqual([
-      113,
-    ]);
-    expect(catalog.findProductIds(entry('Crepe Maker', null, null), 2)).toEqual([81]);
-  });
-
-  it.each([
-    ['double space', entry('Smartphone  Galaxy S23', 'Samsung', 'Electronics')],
-    ['other case', entry('smartphone galaxy s23', 'Samsung', 'Electronics')],
-    ['accent', entry('Câmera Canon EOS R6', 'Canon', 'Photography')],
-    ['brand variant', entry('Belt Leather Reversible', "Levi's", 'Accessories')],
-    ['category variant', entry('Camera Canon EOS R6', 'Canon', 'Photo')],
-    ['null spelled as text', entry('Cable Organizer Kit', 'null', 'Accessories')],
-  ])('finds nothing for a %s', (_, attributes) => {
-    expect(catalog.findProductIds(attributes, 2)).toEqual([]);
-  });
-
-  it('respects the limit', () => {
-    const insert = db.prepare('INSERT INTO Product (Name, Brand, Category) VALUES (?, ?, ?)');
-    for (let i = 0; i < 3; i++) {
-      insert.run('Limit Probe', null, null);
-    }
-
-    expect(catalog.findProductIds(entry('Limit Probe', null, null), 2)).toHaveLength(2);
-  });
-
-  it('is served by the exact-match index instead of a table scan', () => {
-    const plan = db
-      .prepare(
-        'EXPLAIN QUERY PLAN SELECT Id FROM Product WHERE Name = ? AND Brand IS ? AND Category IS ? LIMIT ?',
-      )
-      .all('x', null, null, 2) as { detail: string }[];
-
-    expect(plan.map(({ detail }) => detail).join()).toContain('IX_Product_Name_Brand_Category');
-  });
-});
-
 describe('CatalogDatabase.findOrCreateSeller', () => {
   const countSellers = (name: string) =>
     db.prepare('SELECT COUNT(*) FROM Seller WHERE Name = ?').pluck().get(name);
@@ -155,6 +110,56 @@ describe('CatalogDatabase.transaction', () => {
     ).toThrow('boom');
     expect(db.prepare("SELECT COUNT(*) FROM Seller WHERE Name = 'MegaStore'").pluck().get()).toBe(
       0,
+    );
+  });
+});
+
+describe('CatalogDatabase.findProductIdsByNormalizedName', () => {
+  const find = (attributes: SellerProductEntry) =>
+    catalog.findProductIdsByNormalizedName(attributes, 2);
+
+  it.each([
+    ['the exact name', entry('Smartphone Galaxy S23', 'Samsung', 'Electronics'), [2]],
+    ['a double space', entry('Smartphone  Galaxy S23', 'Samsung', 'Electronics'), [2]],
+    ['other case', entry('smartphone galaxy s23', 'Samsung', 'Electronics'), [2]],
+    ['an accent', entry('Câmera Canon EOS R6', 'Canon', 'Photography'), [18]],
+    ['two single quotes as inches', entry("Tablet iPad Pro 12.9''", 'Apple', 'Tablets'), [14]],
+    ['a missing inch mark', entry('Smart TV Samsung 55', 'Samsung', 'Electronics'), [10]],
+    ['a null brand', entry('Cable  Organizer Kit', null, 'Accessories'), [113]],
+    ['null brand and category', entry('Crepe Maker', null, null), [81]],
+  ])('finds the product given %s', (_, attributes, ids) => {
+    expect(find(attributes)).toEqual(ids);
+  });
+
+  it.each([
+    ['brand variant', entry('Belt Leather Reversible', "Levi's", 'Accessories')],
+    ['category variant', entry('Camera Canon EOS R6', 'Canon', 'Photo')],
+    ['translation', entry('Roteador WiFi 6 TP-Link', 'TP-Link', 'Networking')],
+    ['null spelled as text', entry('Cable Organizer Kit', 'null', 'Accessories')],
+  ])('finds nothing for a %s', (_, attributes) => {
+    expect(find(attributes)).toEqual([]);
+  });
+
+  it('respects the limit', () => {
+    const insert = db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    );
+    for (let i = 0; i < 3; i++) {
+      insert.run('Limit Probe', null, null, 'limit probe');
+    }
+
+    expect(find(entry('Limit Probe', null, null))).toHaveLength(2);
+  });
+
+  it('is served by the normalized-name index instead of a table scan', () => {
+    const plan = db
+      .prepare(
+        'EXPLAIN QUERY PLAN SELECT Id FROM Product WHERE NormalizedName = ? AND Brand IS ? AND Category IS ? LIMIT ?',
+      )
+      .all('x', null, null, 2) as { detail: string }[];
+
+    expect(plan.map(({ detail }) => detail).join()).toContain(
+      'IX_Product_NormalizedName_Brand_Category',
     );
   });
 });

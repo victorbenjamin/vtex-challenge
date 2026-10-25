@@ -13,13 +13,19 @@ export class CatalogDatabase {
     return this.db.transaction(work)();
   }
 
-  // Up to `limit` products with exactly the entry's name, brand and category. IS treats
-  // null as equal to null; the lookup is served by IX_Product_Name_Brand_Category.
-  findProductIds({ name, brand, category }: SellerProductEntry, limit: number): number[] {
+  // Up to `limit` products whose name is the entry's up to spelling (accents, case, inch
+  // marks, spacing), with the same brand and category. IS treats null as equal to null;
+  // the lookup is served by IX_Product_NormalizedName_Brand_Category.
+  findProductIdsByNormalizedName(
+    { normalizedName, brand, category }: SellerProductEntry,
+    limit: number,
+  ): number[] {
     return this.db
-      .prepare('SELECT Id FROM Product WHERE Name = ? AND Brand IS ? AND Category IS ? LIMIT ?')
+      .prepare(
+        'SELECT Id FROM Product WHERE NormalizedName = ? AND Brand IS ? AND Category IS ? LIMIT ?',
+      )
       .pluck()
-      .all(name, brand, category, limit) as number[];
+      .all(normalizedName, brand, category, limit) as number[];
   }
 
   // The Name column is COLLATE NOCASE: a seller is found regardless of case. If another

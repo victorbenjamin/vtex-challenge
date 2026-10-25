@@ -50,11 +50,10 @@ describe('ImportCatalog', () => {
     expect(offersOf('MegaStore')).toEqual([['sku-1', 2]]);
   });
 
-  it('counts entries without an exact match and writes nothing for them', () => {
+  it('counts entries that no rule matches and writes nothing for them', () => {
+    // A brand variant is not covered by name normalization.
     expect(
-      countsOf([
-        { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Name: 'Smartphone  Galaxy S23' },
-      ]),
+      countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Brand: 'Samsung Electronics' }]),
     ).toMatchObject({ linked: 0, unmatched: 1 });
     expect(externalSellers()).toEqual([]);
   });
@@ -112,6 +111,51 @@ describe('ImportCatalog', () => {
       ]),
     ).toMatchObject({ rejected: 2 });
     expect(offersOf(MARKETPLACE_SELLER_NAME)).toHaveLength(975);
+  });
+
+  it('links names that differ from the catalog only in spelling', () => {
+    expect(
+      countsOf([
+        { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Name: 'Smartphone  Galaxy S23' },
+        { Id: 'sku-2', SellerName: 'MegaStore', ...iphone, Name: 'IPHONE 15 PRO' },
+      ]),
+    ).toMatchObject({ linked: 2, unmatched: 0 });
+    expect(offersOf('MegaStore')).toEqual([
+      ['sku-1', 2],
+      ['sku-2', 3],
+    ]);
+  });
+
+  it('treats catalog products that differ only in spelling as ambiguous, even for an exact name', () => {
+    // Trade-off of matching by normalized name only: recall is lost here, precision is kept.
+    db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    ).run('SMARTPHONE GALAXY S23', 'Samsung', 'Electronics', 'smartphone galaxy s23');
+
+    expect(countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy }])).toMatchObject({
+      linked: 0,
+      unmatched: 1,
+    });
+  });
+
+  it('never links a name that is ambiguous after normalization', () => {
+    const insert = db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    );
+    insert.run('Yoga Mat Pro', 'Gaiam', 'Fitness', 'yoga mat pro');
+    insert.run('YOGA MAT PRO', 'Gaiam', 'Fitness', 'yoga mat pro');
+
+    expect(
+      countsOf([
+        {
+          Id: 'sku-1',
+          SellerName: 'MegaStore',
+          Name: 'Yoga  Mat Pro',
+          Brand: 'Gaiam',
+          Category: 'Fitness',
+        },
+      ]),
+    ).toMatchObject({ linked: 0, unmatched: 1 });
   });
 
   it('never links attributes shared by more than one catalog product', () => {

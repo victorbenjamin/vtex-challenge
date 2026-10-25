@@ -68,7 +68,11 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - `SellerProduct (SellerId, SellerProductId TEXT, ProductId)`, com chave primária `(SellerId, SellerProductId)`, `WITHOUT ROWID` e índice em `ProductId`.
   - **Cada linha é uma oferta (um SKU do seller).** Um seller pode ter vários SKUs para o mesmo produto.
 - **Após a migração 002:** existe o seller `Marketplace` (o próprio marketplace), com uma oferta para cada um dos 975 produtos. O `SellerProductId` dessas ofertas é o `Product.Id` em texto.
-- **Após a migração 003:** índice `IX_Product_Name_Brand_Category` em `Product (Name, Brand, Category)`, usado pelo match exato.
+- **Migração 003:** criou o índice `IX_Product_Name_Brand_Category`; a **migração 005 o removeu**, porque a importação busca só pelo nome normalizado (todo match exato também é normalizado).
+- **Após a migração 004:** coluna `Product.NormalizedName`, preenchida, com índice `IX_Product_NormalizedName_Brand_Category`.
+  - A migração tem uma **cópia congelada** da normalização (`normalizeAtMigration004`), e um teste a compara com `normalizeProductName` (`src/domain/product-name.ts`).
+  - **Se a normalização mudar,** crie uma nova migração que recalcule a coluna. Nunca edite a 004.
+  - **Todo produto criado** pela importação precisa gravar o `NormalizedName`.
 - **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.

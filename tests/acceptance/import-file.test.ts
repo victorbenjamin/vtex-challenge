@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ImportSummary } from '../../src/domain/import-summary.ts';
+import { normalizeProductName } from '../../src/domain/product-name.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../src/domain/seller-product-entry.ts';
 import { readImportFile } from '../../src/infrastructure/import-file.ts';
 import { ORIGINAL_DATABASE_PATH } from '../../src/infrastructure/sqlite/connection.ts';
@@ -12,8 +13,10 @@ import {
   type MigratedDatabase,
 } from '../helpers/working-database.ts';
 
-// Expected results come from docs/analysis/data-analysis.md §3.1 (first row: 200 exact
-// matches) for the first import increment, which only resolves exact matches.
+// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, for the second
+// import increment: exact matches (first row, 200 items) plus names that differ only in
+// spelling (second row, 64 items). Item #55 "Câmera" and #76 "Camera" share seller and Id,
+// so #76 is already linked. The other 5 items need rules not implemented yet.
 
 const FILE = 'data/ProductEntry.json';
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -34,15 +37,56 @@ afterAll(() => {
   migrated.cleanup();
 });
 
-describe(`importing ${FILE} (exact matches only)`, () => {
-  it('links the 200 exact matches and leaves the other 69 pending', () => {
+describe(`importing ${FILE} (exact and normalized-name matches)`, () => {
+  it('links 263 items and leaves 5 pending', () => {
     expect(summary.counts()).toEqual({
-      linked: 200,
-      alreadyLinked: 0,
+      linked: 263,
+      alreadyLinked: 1,
       conflict: 0,
-      unmatched: 69,
+      unmatched: 5,
       rejected: 0,
     });
+  });
+
+  it.each([
+    [
+      'inch quotes',
+      "#53 Tablet iPad Pro 12.9''",
+      'KitchenPlus',
+      'c3c3c3c3-d4d4-4e5e-f6f6-a7a7a7a7a7a7',
+      14,
+    ],
+    [
+      'accent',
+      '#55 Câmera Canon EOS R6',
+      'GardenStore',
+      'e5e5e5e5-f6f6-4a7a-b8b8-c9c9c9c9c9c9',
+      18,
+    ],
+    [
+      'missing inch',
+      '#267 Tablet iPad Pro 12.9',
+      'GadgetZone',
+      'addd0000-eeee-4111-ffff-aaaa22223333',
+      14,
+    ],
+    [
+      'missing inch',
+      '#268 Smart TV Samsung 55',
+      'SmartHomeStore',
+      'uddd0000-eeee-4111-ffff-aaaa22223333',
+      10,
+    ],
+  ])('links the %s case %s', (_, __, sellerName, sku, productId) => {
+    expect(
+      db
+        .prepare(
+          `SELECT sp.ProductId FROM SellerProduct sp JOIN Seller s ON s.Id = sp.SellerId
+           WHERE s.Name = ? AND sp.SellerProductId = ?`,
+        )
+        .pluck()
+        .get(sellerName, sku),
+    ).toBe(productId);
   });
 
   it('creates the 20 sellers of the file', () => {
@@ -54,11 +98,11 @@ describe(`importing ${FILE} (exact matches only)`, () => {
     ).toBe(20);
   });
 
-  it('stores 1,175 offers: 975 from the marketplace plus 200 imported', () => {
-    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1175);
+  it('stores 1,238 offers: 975 from the marketplace plus 263 imported', () => {
+    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1238);
   });
 
-  it('links every imported offer to a product with identical name, brand and category', () => {
+  it('links every imported offer to a product with the same normalized name, brand and category', () => {
     const items = readImportFile(FILE) as Record<string, string | null>[];
     const itemBySellerSku = new Map(
       items.map((item) => [`${item['SellerName']}|${item['Id']}`, item]),
@@ -66,7 +110,7 @@ describe(`importing ${FILE} (exact matches only)`, () => {
     const offers = db
       .prepare(
         `SELECT s.Name AS sellerName, sp.SellerProductId AS sku,
-                p.Name AS name, p.Brand AS brand, p.Category AS category
+                p.NormalizedName AS name, p.Brand AS brand, p.Category AS category
          FROM SellerProduct sp
          JOIN Seller s ON s.Id = sp.SellerId
          JOIN Product p ON p.Id = sp.ProductId
@@ -74,11 +118,11 @@ describe(`importing ${FILE} (exact matches only)`, () => {
       )
       .all(MARKETPLACE_SELLER_NAME) as Record<string, string | null>[];
 
-    expect(offers).toHaveLength(200);
+    expect(offers).toHaveLength(263);
     for (const offer of offers) {
       const item = itemBySellerSku.get(`${offer['sellerName']}|${offer['sku']}`);
       expect([offer['name'], offer['brand'], offer['category']]).toEqual([
-        item?.['Name'],
+        normalizeProductName(item?.['Name'] ?? ''),
         item?.['Brand'],
         item?.['Category'],
       ]);
@@ -92,7 +136,7 @@ describe(`importing ${FILE} (exact matches only)`, () => {
   it('is idempotent', () => {
     const second = sqliteImportCatalog(db).execute(readImportFile(FILE));
 
-    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 200, unmatched: 69 });
+    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 264, unmatched: 5 });
   });
 
   it('does not create products', () => {
