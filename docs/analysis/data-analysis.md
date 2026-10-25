@@ -216,7 +216,7 @@ Depois do matching:
 | 1 | IDs são texto e só são únicos por seller | Migrar `SellerProductId` para `TEXT` e criar `UNIQUE (SellerName, SellerProductId)` |
 | 2 | Reenvio do mesmo `(seller, id)` | Upsert idempotente: rodar duas vezes não muda nada |
 | 3 | Mesmo seller, mesmo produto, IDs diferentes (10 casos) | Decidir entre a opção A e a opção B (seção 2.3) e documentar |
-| 4 | 3 IDs malformados, cerca de 200 UUIDs fora do padrão v4 | Validação leniente, que rejeita só o malformado, e relatório de itens rejeitados |
+| 4 | 3 IDs malformados, cerca de 200 UUIDs fora do padrão v4 | **Decidido (2026-10-25): aceitar qualquer texto não vazio.** O ID pertence ao seller e o marketplace não impõe formato. Custo aceito: um ID digitado errado pode gerar uma oferta duplicada quando o seller reenviar com o código correto. |
 | 5 | SQL injection | Queries parametrizadas e teste dedicado |
 | 6 | Espaços, acentos, aspas e números | Chave normalizada que preserva números e pontos decimais |
 | 7 | Traduções | Dicionário de sinônimos, ou fuzzy com proteções (número do modelo e marca iguais), com LLM ou embeddings como evolução |
@@ -230,8 +230,8 @@ Depois do matching:
 
 ## 5. Resultado esperado como teste de aceitação
 
-A classificação da seção 3.1 serve de gabarito. Uma execução correta sobre o arquivo deve resultar em:
-- **0 produtos novos.** Ou 1, se a decisão for aceitar o `Security Test Product`, o que não é recomendado.
-- **1 item rejeitado:** o `Security Test Product`, por ID malformado. Os outros dois IDs malformados (#92 e #268) precisam de uma decisão: rejeitar, ou aceitar porque o seller é a fonte do ID e o formato não importa.
-- **Cerca de 265 links** em `SellerProduct`. O número exato depende das decisões dos itens 2, 3 e 4 da seção 4.
+A classificação da seção 3.1 serve de gabarito. Com as decisões tomadas (uma oferta por SKU do seller e qualquer ID não vazio aceito), uma execução correta sobre o arquivo deve resultar em:
+- **1 produto novo:** o `Security Test Product` (#180), com a marca gravada literalmente como texto.
+- **0 itens rejeitados.**
+- **268 ofertas** em `SellerProduct`: 269 itens, menos o reenvio da câmera com o mesmo `(seller, id)` (#55 e #76), que resulta numa só oferta.
 - **Nenhum link para um produto errado,** verificado contra a tabela da seção 3.1.

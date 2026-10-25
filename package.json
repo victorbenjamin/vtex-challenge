@@ -13,10 +13,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:migrate": "tsx src/db/cli.ts",
+    "db:reset": "tsx src/db/cli.ts --reset"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "knex": "^3.3.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

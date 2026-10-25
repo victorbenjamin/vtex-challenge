@@ -16,14 +16,22 @@ Take-home da VTEX, "Catalog Consolidation": importar produtos de vários sellers
 
 ## Stack e comandos
 
-TypeScript (ESM, `strict`), Node `>=22`, `better-sqlite3`, `tsx`, `vitest` e `prettier`. Os motivos estão em `docs/plans/001-typescript-environment.md`.
+TypeScript (ESM, `strict`), Node `>=22`, `better-sqlite3`, `knex` (só para migrações), `tsx`, `vitest` e `prettier`. Os motivos estão em `docs/plans/001-typescript-environment.md`.
 
 ```bash
 npm start              # roda src/index.ts com tsx
 npm run typecheck      # tsc --noEmit (o tsx não verifica tipos)
 npm test               # vitest run (tests/**/*.test.ts)
 npm run format:check   # prettier
+npm run db:migrate     # cria output/catalog.db (se faltar) e aplica as migrações pendentes
+npm run db:reset       # recopia o original para output/ e aplica todas as migrações
 ```
+
+**Migrações:** usam o Knex, só para migrações (a aplicação usa `better-sqlite3` diretamente).
+
+- Os arquivos ficam em `migrations/NNN_descricao.ts`, com `up` e `down` em SQL via `knex.raw`.
+- A configuração fica em `src/db/migrations.ts` (`createMigrator`), que recusa o banco original, assim como `src/db/connection.ts`.
+- Detalhes em `docs/plans/002-schema-migration.md`.
 
 Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`.
 
@@ -40,8 +48,12 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 ## Fatos essenciais (detalhes em `docs/analysis/data-analysis.md`)
 
 - **`Product`:** 975 linhas, sem duplicatas. 119 sem marca, 34 sem categoria.
-- **`SellerProduct`:** vazia. `SellerProductId` é `INTEGER`, mas os IDs do arquivo são UUIDs em texto.
-- **Schema:** sem índices nem restrições de unicidade. A chave estrangeira não é verificada (`PRAGMA foreign_keys` está desligado).
+- **Schema original:** `SellerProduct` vazia, com `SellerProductId INTEGER` (os IDs do arquivo são UUIDs em texto). Sem índices nem restrições de unicidade.
+- **Schema após a migração 001:**
+  - `Seller (Id, Name UNIQUE COLLATE NOCASE)`.
+  - `SellerProduct (SellerId, SellerProductId TEXT, ProductId)`, com chave primária `(SellerId, SellerProductId)`, `WITHOUT ROWID` e índice em `ProductId`.
+  - **Cada linha é uma oferta (um SKU do seller).** Um seller pode ter vários SKUs para o mesmo produto.
+- **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.
 - **Falsos positivos:** fuzzy matching ingênuo junta produtos diferentes (Multivitamin Men e Women, 0.94). A precisão vem antes do recall.
@@ -50,8 +62,6 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 ## Decisões pendentes
 
-- Mesmo seller enviando o mesmo produto com IDs diferentes (10 casos): um link por SKU ou um por produto?
-- IDs malformados (3): rejeitar ou aceitar?
 - Os 777 produtos do catálogo sem seller pertencem à própria loja?
 
 Ao decidir, mova o item para o plano ou o changelog correspondente.
