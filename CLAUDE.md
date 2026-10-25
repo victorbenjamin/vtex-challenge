@@ -70,14 +70,17 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 - **Após a migração 002:** existe o seller `Marketplace` (o próprio marketplace), com uma oferta para cada um dos 975 produtos. O `SellerProductId` dessas ofertas é o `Product.Id` em texto.
 - **Migração 003:** criou o índice `IX_Product_Name_Brand_Category`; a **migração 005 o removeu**, porque a importação busca só pelo nome normalizado (todo match exato também é normalizado).
 - **Após a migração 004:** coluna `Product.NormalizedName`, preenchida, com índice `IX_Product_NormalizedName_Brand_Category`.
-- **Regra de match (plano 009):**
-  - nome normalizado (`normalizeProductName`) e marca normalizada (`normalizeBrand`, com nulo só igual a nulo);
-  - a categoria é ignorada;
-  - a marca é filtrada no domínio (`SellerProductEntry.hasBrand`), sobre os candidatos de `findProductsByNormalizedName`, com teto `CANDIDATE_LIMIT`;
-  - só um candidato casa.
   - A migração tem uma **cópia congelada** da normalização (`normalizeAtMigration004`), e um teste a compara com `normalizeProductName` (`src/domain/product-name.ts`).
   - **Se a normalização mudar,** crie uma nova migração que recalcule a coluna. Nunca edite a 004.
   - **Todo produto criado** pela importação precisa gravar o `NormalizedName`.
+- **Após a migração 006:** tabela `NameSynonym (Term, Replacement)`, com `roteador → router` e `processador → processor`.
+  - Os sinônimos valem **num sentido só e só no nome do item**. O catálogo e o `NormalizedName` não mudam, então incluir um sinônimo não exige migração.
+- **Regra de match (planos 009 e 010):**
+  - nome normalizado (`normalizeProductName`) e marca normalizada (`normalizeBrand`, com nulo só igual a nulo);
+  - a categoria é ignorada;
+  - a marca é filtrada no domínio (`SellerProductEntry.hasBrand`), sobre os candidatos de `findProductsByNormalizedName`, com teto `CANDIDATE_LIMIT`;
+  - só um candidato casa;
+  - **cascata:** primeiro o nome do próprio item; só se não houver nenhum candidato da marca, o nome traduzido (`NameSynonyms.translate`). Se o nome do item for ambíguo, a tradução não é tentada.
 - **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.

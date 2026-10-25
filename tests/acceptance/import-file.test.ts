@@ -7,6 +7,7 @@ import { normalizeBrand } from '../../src/domain/brand.ts';
 import { normalizeProductName } from '../../src/domain/product-name.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../src/domain/seller-product-entry.ts';
 import { readImportFile } from '../../src/infrastructure/import-file.ts';
+import { CatalogDatabase } from '../../src/infrastructure/sqlite/catalog-database.ts';
 import { ORIGINAL_DATABASE_PATH } from '../../src/infrastructure/sqlite/connection.ts';
 import {
   createMigratedDatabase,
@@ -14,10 +15,11 @@ import {
   type MigratedDatabase,
 } from '../helpers/working-database.ts';
 
-// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, for the third
-// import increment: the first three rows of §3.1 (exact names, names that differ only in
-// spelling, and brand or category variants). Item #55 "Câmera" and #76 "Camera" share
-// seller and Id, so #76 is already linked. The other 3 items need rules not implemented yet.
+// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, for the fourth
+// import increment: the first four rows of §3.1 (exact names, names that differ only in
+// spelling, brand or category variants, and Portuguese translations). Item #55 "Câmera"
+// and #76 "Camera" share seller and Id, so #76 is already linked. Only #180, the SQL
+// injection test product, is left: it has no product in the catalog.
 
 const FILE = 'data/ProductEntry.json';
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -38,13 +40,13 @@ afterAll(() => {
   migrated.cleanup();
 });
 
-describe(`importing ${FILE} (name, spelling, brand and category variants)`, () => {
-  it('links 265 items and leaves 3 pending', () => {
+describe(`importing ${FILE} (spelling, brand, category and translation variants)`, () => {
+  it('links 267 items and leaves 1 pending', () => {
     expect(summary.counts()).toEqual({
-      linked: 265,
+      linked: 267,
       alreadyLinked: 1,
       conflict: 0,
-      unmatched: 3,
+      unmatched: 1,
       rejected: 0,
     });
   });
@@ -77,6 +79,20 @@ describe(`importing ${FILE} (name, spelling, brand and category variants)`, () =
       'SmartHomeStore',
       'uddd0000-eeee-4111-ffff-aaaa22223333',
       10,
+    ],
+    [
+      'translation',
+      '#57 Roteador WiFi 6 TP-Link',
+      'FootwearHub',
+      'a7a7a7a7-b8b8-4c9c-d0d0-e1e1e1e1e1e1',
+      21,
+    ],
+    [
+      'translation',
+      '#64 Processador AMD Ryzen 9 7950X',
+      'SuperMart',
+      'b4b4b4b4-c5c5-4d6d-e7e7-f8f8f8f8f8f8',
+      28,
     ],
     [
       'category',
@@ -113,11 +129,11 @@ describe(`importing ${FILE} (name, spelling, brand and category variants)`, () =
     ).toBe(20);
   });
 
-  it('stores 1,240 offers: 975 from the marketplace plus 265 imported', () => {
-    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1240);
+  it('stores 1,242 offers: 975 from the marketplace plus 267 imported', () => {
+    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1242);
   });
 
-  it('links every imported offer to a product with the same normalized name and brand', () => {
+  it('links every imported offer to a product with the same normalized (or translated) name and brand', () => {
     const items = readImportFile(FILE) as Record<string, string | null>[];
     const itemBySellerSku = new Map(
       items.map((item) => [`${item['SellerName']}|${item['Id']}`, item]),
@@ -133,11 +149,13 @@ describe(`importing ${FILE} (name, spelling, brand and category variants)`, () =
       )
       .all(MARKETPLACE_SELLER_NAME) as Record<string, string | null>[];
 
-    expect(offers).toHaveLength(265);
+    const synonyms = new CatalogDatabase(db).loadNameSynonyms();
+    expect(offers).toHaveLength(267);
     for (const offer of offers) {
       const item = itemBySellerSku.get(`${offer['sellerName']}|${offer['sku']}`);
+      const itemName = normalizeProductName(item?.['Name'] ?? '');
       expect([offer['name'], normalizeBrand(offer['brand'] ?? null)]).toEqual([
-        normalizeProductName(item?.['Name'] ?? ''),
+        offer['name'] === itemName ? itemName : synonyms.translate(itemName),
         normalizeBrand(item?.['Brand'] ?? null),
       ]);
     }
@@ -150,7 +168,7 @@ describe(`importing ${FILE} (name, spelling, brand and category variants)`, () =
   it('is idempotent', () => {
     const second = sqliteImportCatalog(db).execute(readImportFile(FILE));
 
-    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 266, unmatched: 3 });
+    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 268, unmatched: 1 });
   });
 
   it('does not create products', () => {

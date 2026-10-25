@@ -154,3 +154,22 @@ describe('CatalogDatabase.findProductsByNormalizedName', () => {
     );
   });
 });
+
+describe('CatalogDatabase.loadNameSynonyms', () => {
+  it('loads the synonyms of the database', () => {
+    expect(catalog.loadNameSynonyms().translate('roteador wifi 6 tp-link')).toBe(
+      'router wifi 6 tp-link',
+    );
+  });
+
+  it('sees synonyms added to the table, with no migration', () => {
+    db.prepare('INSERT INTO NameSynonym (Term, Replacement) VALUES (?, ?)').run(
+      'teclado',
+      'keyboard',
+    );
+
+    expect(catalog.loadNameSynonyms().translate('teclado mecanico rgb')).toBe(
+      'keyboard mecanico rgb',
+    );
+  });
+});

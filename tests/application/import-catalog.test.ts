@@ -248,6 +248,74 @@ describe('ImportCatalog', () => {
     });
   });
 
+  describe('with name synonyms', () => {
+    // Catalog #21: Router WiFi 6 TP-Link. Migration 006 maps "roteador" to "router".
+    const roteador = {
+      Id: 'sku-1',
+      SellerName: 'FootwearHub',
+      Name: 'Roteador WiFi 6 TP-Link',
+      Brand: 'TP-Link',
+      Category: 'Networking',
+    };
+
+    it('links a name translated to the catalog vocabulary', () => {
+      expect(countsOf([roteador])).toMatchObject({ linked: 1 });
+      expect(offersOf('FootwearHub')).toEqual([['sku-1', 21]]);
+    });
+
+    it('prefers a product with the entry own name over the translated one', () => {
+      const ownName = Number(
+        db
+          .prepare(
+            'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+          )
+          .run('Roteador WiFi 6 TP-Link', 'TP-Link', 'Networking', 'roteador wifi 6 tp-link')
+          .lastInsertRowid,
+      );
+
+      run([roteador]);
+
+      expect(offersOf('FootwearHub')).toEqual([['sku-1', ownName]]);
+    });
+
+    it('does not fall back to the translation when the own name is ambiguous', () => {
+      const insert = db.prepare(
+        'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+      );
+      insert.run('Roteador WiFi 6 TP-Link', 'TP-Link', 'Networking', 'roteador wifi 6 tp-link');
+      insert.run('ROTEADOR WIFI 6 TP-LINK', 'TP-Link', 'Networking', 'roteador wifi 6 tp-link');
+
+      expect(countsOf([roteador])).toMatchObject({ linked: 0, unmatched: 1 });
+    });
+
+    it('still requires the brand after translating', () => {
+      expect(countsOf([{ ...roteador, Brand: 'Netgear' }])).toMatchObject({
+        linked: 0,
+        unmatched: 1,
+      });
+    });
+
+    it('uses a synonym added to the table on the next import', () => {
+      const teclado = {
+        Id: 'sku-2',
+        SellerName: 'MegaStore',
+        Name: 'Teclado Mechanical RGB',
+        Brand: 'Corsair',
+        Category: 'Accessories',
+      };
+      expect(countsOf([teclado])).toMatchObject({ unmatched: 1 });
+
+      db.prepare('INSERT INTO NameSynonym (Term, Replacement) VALUES (?, ?)').run(
+        'teclado',
+        'keyboard',
+      );
+
+      // Catalog #7: Keyboard Mechanical RGB.
+      expect(countsOf([teclado])).toMatchObject({ linked: 1 });
+      expect(offersOf('MegaStore')).toEqual([['sku-2', 7]]);
+    });
+  });
+
   it('rejects invalid items without stopping the import', () => {
     expect(
       countsOf([

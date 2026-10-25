@@ -146,3 +146,12 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Resultado:** 265 ligados, 1 já ligado e 3 pendentes (#57, #64, #180), exatamente como o gabarito. 134 testes.
     - `data-analysis.md` (§4, itens 9 e 10, e §5), `README.md` e `CLAUDE.md` foram atualizados.
 37. **Commit e push** do incremento 3 (variações de marca e categoria) e da documentação.
+38. **Plano 010 proposto: sinônimos para traduções** (quarta linha da `data-analysis §3.1`: #57 `Roteador` e #64 `Processador`). O usuário escolheu uma tabela `NameSynonym` no banco (migração 006). Os sinônimos são aplicados num sentido só (vocabulário do seller para o do catálogo), só no nome do item e por palavra inteira, como fallback depois do nome original. Gabarito: 267 ligados, 1 já ligado, 1 pendente.
+39. **Importação, incremento 4 (sinônimos para traduções).** Plano em `docs/plans/010-name-synonyms.md`.
+    - **Migração 006:** tabela `NameSynonym (Term COLLATE NOCASE, Replacement)`, com `CHECK` de termo de uma palavra só e as traduções `roteador → router` e `processador → processor`.
+    - `src/domain/name-synonyms.ts` (`NameSynonyms.translate`): troca por palavra inteira, com os termos e as substituições normalizados ao carregar.
+    - `CatalogDatabase.loadNameSynonyms` é chamado uma vez por importação.
+    - **Cascata em `ImportCatalog`:** primeiro o nome do próprio item; a tradução só se não houver nenhum candidato da marca. Se o nome do item for ambíguo, a tradução não é tentada.
+    - **Resultado:** 267 ligados, 1 já ligado e 1 pendente (#180, sem produto no catálogo). 154 testes.
+    - Os testes de migração ganharam o utilitário `rollBackTo`. A `data-analysis` (§4, item 7, e §5), o `README.md` e o `CLAUDE.md` foram atualizados; no `CLAUDE.md`, as notas da migração 004, que estavam fora do lugar, foram reorganizadas.
+40. **Commit e push** do incremento 4 (sinônimos), da migração 006 e da documentação.

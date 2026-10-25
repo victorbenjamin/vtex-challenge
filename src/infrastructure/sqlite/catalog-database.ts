@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { NameSynonyms } from '../../domain/name-synonyms.ts';
 import type { Offer } from '../../domain/offer.ts';
 
 // All the SQL the import needs. Every query is parameterized (the import file carries
@@ -10,6 +11,16 @@ export class CatalogDatabase {
   // Commits when the work returns, rolls back when it throws.
   transaction<T>(work: () => T): T {
     return this.db.transaction(work)();
+  }
+
+  // All synonyms sellers' words have in the catalog's vocabulary. The table is
+  // configuration-sized, unlike Product, so reading it whole is fine.
+  loadNameSynonyms(): NameSynonyms {
+    const rows = this.db.prepare('SELECT Term, Replacement FROM NameSynonym').raw().all() as [
+      string,
+      string,
+    ][];
+    return new NameSynonyms(rows);
   }
 
   // Up to `limit` products whose name is the given normalized name, with their brand for

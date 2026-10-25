@@ -63,6 +63,7 @@ describe('migrations', () => {
       '003_product_exact_match_index.ts',
       '004_product_normalized_name.ts',
       '005_drop_product_exact_match_index.ts',
+      '006_name_synonym.ts',
     ]);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
@@ -151,10 +152,7 @@ describe('migrations', () => {
   it('roll back only the marketplace seller, keeping the 001 schema', async () => {
     await latest();
 
-    await migrator.migrate.down(); // 005
-    await migrator.migrate.down(); // 004
-    await migrator.migrate.down(); // 003
-    await migrator.migrate.down(); // 002
+    await rollBackTo('001');
 
     withDatabase((db) => {
       expect(db.prepare('SELECT COUNT(*) FROM Seller').pluck().get()).toBe(0);
@@ -165,6 +163,7 @@ describe('migrations', () => {
       '003_product_exact_match_index.ts',
       '004_product_normalized_name.ts',
       '005_drop_product_exact_match_index.ts',
+      '006_name_synonym.ts',
     ]);
   });
 
@@ -172,20 +171,39 @@ describe('migrations', () => {
     await latest();
     expect(productIndexes()).toEqual(['IX_Product_NormalizedName_Brand_Category']);
 
-    await migrator.migrate.down(); // 005
+    await rollBackTo('004');
     expect(productIndexes()).toEqual([
       'IX_Product_NormalizedName_Brand_Category',
       'IX_Product_Name_Brand_Category',
     ]);
 
-    await migrator.migrate.down(); // 004
+    await rollBackTo('003');
     expect(productIndexes()).toEqual(['IX_Product_Name_Brand_Category']);
     expect(productColumnNames()).not.toContain('NormalizedName');
 
-    await migrator.migrate.down(); // 003
+    await rollBackTo('002');
     expect(productIndexes()).toEqual([]);
   });
+
+  it('roll back the synonym table', async () => {
+    await latest();
+
+    await rollBackTo('005');
+
+    withDatabase((db) => {
+      expect(
+        db.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name = 'NameSynonym'").pluck().get(),
+      ).toBe(0);
+    });
+  });
 });
+
+// Rolls back, one migration at a time, until `version` is the last one applied.
+const rollBackTo = async (version: string) => {
+  while ((await migrator.migrate.currentVersion()) !== version) {
+    await migrator.migrate.down();
+  }
+};
 
 const productIndexes = () =>
   withDatabase((db) =>
@@ -353,5 +371,43 @@ describe('connection', () => {
 
   it('refuses to migrate the original database', () => {
     expect(() => createMigrator(ORIGINAL_DATABASE_PATH)).toThrow(/original database/);
+  });
+});
+
+describe('name synonyms (migration 006)', () => {
+  beforeEach(async () => {
+    await latest();
+  });
+
+  it('starts with the translations found in the challenge data', () => {
+    expect(
+      withDatabase((db) =>
+        db.prepare('SELECT Term, Replacement FROM NameSynonym ORDER BY Term').raw().all(),
+      ),
+    ).toEqual([
+      ['processador', 'processor'],
+      ['roteador', 'router'],
+    ]);
+  });
+
+  it.each([
+    ['an empty term', ''],
+    ['a term with several words', 'placa mae'],
+  ])('refuses %s', (_, term) => {
+    withDatabase((db) => {
+      expect(() =>
+        db.prepare('INSERT INTO NameSynonym (Term, Replacement) VALUES (?, ?)').run(term, 'x'),
+      ).toThrow(/CHECK constraint failed/);
+    });
+  });
+
+  it('refuses the same term twice, regardless of case', () => {
+    withDatabase((db) => {
+      expect(() =>
+        db
+          .prepare('INSERT INTO NameSynonym (Term, Replacement) VALUES (?, ?)')
+          .run('ROTEADOR', 'router'),
+      ).toThrow(/UNIQUE constraint failed/);
+    });
   });
 });

@@ -220,7 +220,7 @@ Depois do matching:
 | 4 | 3 IDs malformados, cerca de 200 UUIDs fora do padrão v4 | **Decidido (2026-10-25): aceitar qualquer texto não vazio.** O ID pertence ao seller e o marketplace não impõe formato. Custo aceito: um ID digitado errado pode gerar uma oferta duplicada quando o seller reenviar com o código correto. |
 | 5 | SQL injection | Queries parametrizadas e teste dedicado |
 | 6 | Espaços, acentos, aspas e números | Chave normalizada que preserva números e pontos decimais |
-| 7 | Traduções | Dicionário de sinônimos, ou fuzzy com proteções (número do modelo e marca iguais), com LLM ou embeddings como evolução |
+| 7 | Traduções | **Decidido (plano 010):** tabela de sinônimos no banco (`NameSynonym`), aplicada só no item, por palavra inteira, depois do nome original. Fuzzy, LLM ou embeddings ficam como evolução. |
 | 8 | Falsos positivos no catálogo (Men/Women…) | Não usar um limite fixo sozinho. Exigir que números e palavras de variante sejam iguais e que as marcas sejam compatíveis. |
 | 9 | Variações de marca, inclusive dentro do catálogo | **Decidido (plano 009):** marca normalizada (sem acentos, caixa, espaços e pontuação), com nulo só igual a nulo, comparada no domínio |
 | 10 | Categoria pouco confiável | **Decidido (plano 009):** a categoria não entra na comparação. O desempate por categoria fica como evolução, porque nenhum caso nos dados precisa dele. |
@@ -238,6 +238,7 @@ Depois do matching:
 | 1: match exato (plano 004) | 200 | 0 | 69 | 1.175 |
 | 2: + nome normalizado (plano 008) | 263 | 1 (#76, depois da #55) | 5 (#57, #64, #87, #180, #188) | 1.238 |
 | 3: + marca normalizada, sem categoria (plano 009) | 265 | 1 | 3 (#57, #64, #180) | 1.240 |
+| 4: + sinônimos (plano 010) | 267 | 1 | 1 (#180) | 1.242 |
 
 **Resultado final esperado,** com todas as regras:
 

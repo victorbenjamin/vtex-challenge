@@ -10,7 +10,8 @@ Sistema que consolida produtos enviados por vários sellers no catálogo de um m
 > - **Incremento 1 (match exato):** pronto. Liga os 200 itens iguais em nome, marca e categoria.
 > - **Incremento 2 (nome normalizado):** pronto. Liga mais 64 itens cujo nome só difere em espaços, acentos, caixa ou aspas de polegada. O match exato virou um caso particular dele. No arquivo do desafio, o resultado é 263 ligados e 1 já ligado (um reenvio).
 > - **Incremento 3 (marca e categoria):** pronto. A marca é comparada sem caixa, espaços e pontuação (`Levi's` = `Levis`), e a categoria deixa de ser comparada (`Photo` e `Photography`). Liga mais 2 itens: 265 ligados e 1 já ligado.
-> - Os outros 3 itens ficam **pendentes**, sem gravação, até as próximas etapas: 2 traduções (`Roteador`, `Processador`) e o item de teste de SQL injection.
+> - **Incremento 4 (traduções):** pronto. Uma tabela de sinônimos traduz palavras do seller para o vocabulário do catálogo (`roteador` → `router`). Liga mais 2 itens: 267 ligados e 1 já ligado.
+> - Só 1 item fica **pendente**: o item de teste de SQL injection, que não tem produto no catálogo e depende da etapa "criar produto".
 > - Por enquanto, a importação registra só as **contagens** de cada resultado no log. O relatório detalhado item a item volta quando todas as regras estiverem implementadas.
 >
 > O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
@@ -58,6 +59,7 @@ O schema original não acomodava os dados: `SellerProductId` era `INTEGER`, mas 
   - O SQLite não consegue remover acentos em SQL, por isso a coluna é calculada em TypeScript.
   - A migração tem uma **cópia congelada** da normalização, para sempre gravar os mesmos valores, e um teste garante que ela coincide com a do domínio.
 - [`005`](migrations/005_drop_product_exact_match_index.ts) remove o índice da 003. Todo match exato também é um match normalizado, então a importação busca só pelo nome normalizado, e um índice sem uso ainda custaria em toda escrita.
+- [`006`](migrations/006_name_synonym.ts) cria a tabela `NameSynonym (Term, Replacement)` com as duas traduções do desafio. A operação pode incluir sinônimos sem nova migração.
 
 O schema resultante:
 
@@ -102,8 +104,12 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
    - **Como a busca funciona:** uma consulta indexada traz os produtos com aquele nome normalizado (até 50), e o domínio filtra pela marca.
    - **Exatamente um candidato casa.** Nenhum, vários (ambíguo) ou 50 ou mais (nome genérico demais para decidir) deixam o item pendente.
    - **Perda de recall aceita:** dois produtos do catálogo com o mesmo nome e marca ficam ambíguos, mesmo com categorias diferentes, ou mesmo para um nome escrito exatamente como um deles. O caso não existe nos dados atuais.
-3. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
-4. ⏳ Sem match confiável: criar o produto.
+3. ✅ **Sinônimos, se o nome do item não achar nenhum produto da marca.** O nome normalizado é traduzido palavra por palavra pela tabela `NameSynonym` (`roteador` → `router`) e a busca do passo 2 é repetida.
+   - **Num sentido só e só no item:** o catálogo e o `NormalizedName` não mudam, então um sinônimo novo vale na próxima importação, sem migração.
+   - **Por que é uma cascata:** o nome traduzido é outro nome e pode apontar para outro produto. Se o catálogo tiver `Processador X` e `Processor X`, o item `Processador X` liga ao primeiro.
+   - **Limitação:** só cobre os termos cadastrados, e palavras com mais de uma tradução (`mesa` → `table` ou `desk`) exigem curadoria. Fuzzy, embeddings ou um LLM generalizariam, com os riscos discutidos no [estudo](docs/analysis/entity-resolution-study.md).
+4. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
+5. ⏳ Sem match confiável: criar o produto.
 
 **Garantias atuais:**
 
@@ -155,7 +161,7 @@ Detalhes em [plano 007](docs/plans/007-simplify-types.md). Os planos 005 e 006 r
 data/            entrada original do desafio (somente leitura)
 migrations/      migrações de schema (Knex)
 src/
-  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, normalizeProductName, normalizeBrand
+  domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, NameSynonyms, normalizeProductName, normalizeBrand
   application/   caso de uso ImportCatalog
   infrastructure/
     sqlite/      CatalogDatabase (todo o SQL), conexão e migrações
