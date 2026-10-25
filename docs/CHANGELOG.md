@@ -155,3 +155,8 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Resultado:** 267 ligados, 1 já ligado e 1 pendente (#180, sem produto no catálogo). 154 testes.
     - Os testes de migração ganharam o utilitário `rollBackTo`. A `data-analysis` (§4, item 7, e §5), o `README.md` e o `CLAUDE.md` foram atualizados; no `CLAUDE.md`, as notas da migração 004, que estavam fora do lugar, foram reorganizadas.
 40. **Commit e push** do incremento 4 (sinônimos), da migração 006 e da documentação.
+41. **Fluxo de decisão de um item salvo** em `docs/analysis/import-decision-flow.md`, a pedido do usuário.
+    - Contém o desenho do caminho de um item (validação, nome normalizado, tradução, e o losango ainda em aberto sobre criar produto, com as opções A e B).
+    - Contém a tabela de **todos os resultados possíveis** (`rejected`, `linked`, `alreadyLinked`, `conflict`, `unmatched` com os quatro motivos, `created` planejado e a falha técnica), cada um com quando acontece, o que é gravado, um exemplo e o estado.
+    - Incluído no mapa da documentação do `CLAUDE.md`.
+42. **Commit e push** do fluxo de decisão de um item (`docs/analysis/import-decision-flow.md`).

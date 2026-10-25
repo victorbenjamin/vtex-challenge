@@ -50,14 +50,15 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 ## Mapa da documentação: leia sob demanda
 
-| Arquivo                                    | Quando ler                                                                                                                                                                          |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `README.md`                                | Visão do projeto para os avaliadores: status, decisões e como rodar. Atualize-o junto com as mudanças (preferência 7).                                                              |
-| `docs/CHANGELOG.md`                        | Para saber o que já foi feito e em que ordem                                                                                                                                        |
-| `docs/plans/`                              | Antes de implementar algo. Verifique se existe um plano relacionado.                                                                                                                |
-| `docs/analysis/data-analysis.md`           | Para decisões sobre schema, validação, normalização, matching ou testes. A seção 4 lista as decisões que saem dos dados, e a seção 5 é o gabarito de aceitação.                     |
-| `docs/analysis/entity-resolution-study.md` | Para escolher ou justificar uma técnica de matching. A seção 2 trata do trade-off entre precisão e recall, e a seção 5 da cascata recomendada.                                      |
-| `docs/challenge/summary.md`                | Para o enunciado e as orientações da VTEX. Esta pasta é **local e confidencial**: está no `.gitignore` e nada dela deve ir para arquivos versionados. Prefira este resumo aos PDFs. |
+| Arquivo                                    | Quando ler                                                                                                                                                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                                | Visão do projeto para os avaliadores: status, decisões e como rodar. Atualize-o junto com as mudanças (preferência 7).                                                                                        |
+| `docs/CHANGELOG.md`                        | Para saber o que já foi feito e em que ordem                                                                                                                                                                  |
+| `docs/plans/`                              | Antes de implementar algo. Verifique se existe um plano relacionado.                                                                                                                                          |
+| `docs/analysis/data-analysis.md`           | Para decisões sobre schema, validação, normalização, matching ou testes. A seção 4 lista as decisões que saem dos dados, e a seção 5 é o gabarito de aceitação.                                               |
+| `docs/analysis/import-decision-flow.md`    | Para entender o caminho de um item na importação (desenho do fluxo) e todos os resultados possíveis (`rejected`, `linked`, `alreadyLinked`, `conflict`, `unmatched`, `created`), com quando cada um acontece. |
+| `docs/analysis/entity-resolution-study.md` | Para escolher ou justificar uma técnica de matching. A seção 2 trata do trade-off entre precisão e recall, e a seção 5 da cascata recomendada.                                                                |
+| `docs/challenge/summary.md`                | Para o enunciado e as orientações da VTEX. Esta pasta é **local e confidencial**: está no `.gitignore` e nada dela deve ir para arquivos versionados. Prefira este resumo aos PDFs.                           |
 
 ## Fatos essenciais (detalhes em `docs/analysis/data-analysis.md`)
 
