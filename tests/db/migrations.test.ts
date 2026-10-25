@@ -11,6 +11,7 @@ import {
   ORIGINAL_DATABASE_PATH,
 } from '../../src/db/connection.ts';
 import { createMigrator } from '../../src/db/migrations.ts';
+import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
 
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -54,7 +55,7 @@ describe('migrations', () => {
   it('apply to a copy and leave the original untouched', async () => {
     const originalHash = sha256(ORIGINAL_DATABASE_PATH);
 
-    expect(await latest()).toEqual(['001_seller_and_offer_keys.ts']);
+    expect(await latest()).toEqual(['001_seller_and_offer_keys.ts', '002_marketplace_seller.ts']);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
 
@@ -83,6 +84,7 @@ describe('migrations', () => {
 
     withDatabase((db) => {
       expect(db.prepare('SELECT Name FROM Seller ORDER BY Name').pluck().all()).toEqual([
+        MARKETPLACE_SELLER_NAME,
         'MegaStore',
         'TechWorld',
       ]);
@@ -91,10 +93,11 @@ describe('migrations', () => {
           .prepare(
             `SELECT s.Name, sp.SellerProductId, sp.ProductId
              FROM SellerProduct sp JOIN Seller s ON s.Id = sp.SellerId
+             WHERE s.Name <> ?
              ORDER BY s.Name, sp.SellerProductId`,
           )
           .raw()
-          .all(),
+          .all(MARKETPLACE_SELLER_NAME),
       ).toEqual([
         ['MegaStore', '101', 2],
         ['MegaStore', '102', 3],
@@ -135,6 +138,52 @@ describe('migrations', () => {
 
     expect(structure()).toEqual(original);
   });
+
+  it('roll back only the marketplace seller, keeping the 001 schema', async () => {
+    await latest();
+
+    await migrator.migrate.down();
+
+    withDatabase((db) => {
+      expect(db.prepare('SELECT COUNT(*) FROM Seller').pluck().get()).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(0);
+    });
+    expect(await latest()).toEqual(['002_marketplace_seller.ts']);
+  });
+});
+
+describe('marketplace seller', () => {
+  beforeEach(async () => {
+    await latest();
+  });
+
+  it('offers every existing product, using the product id as its SKU', () => {
+    withDatabase((db) => {
+      const offers = db
+        .prepare(
+          `SELECT sp.SellerProductId, sp.ProductId
+           FROM SellerProduct sp JOIN Seller s ON s.Id = sp.SellerId
+           WHERE s.Name = ?`,
+        )
+        .all(MARKETPLACE_SELLER_NAME) as { SellerProductId: string; ProductId: number }[];
+
+      expect(offers).toHaveLength(975);
+      expect(offers.every((offer) => offer.SellerProductId === String(offer.ProductId))).toBe(true);
+    });
+  });
+
+  it('leaves no product without a seller', () => {
+    withDatabase((db) => {
+      expect(
+        db
+          .prepare(
+            'SELECT COUNT(*) FROM Product WHERE Id NOT IN (SELECT ProductId FROM SellerProduct)',
+          )
+          .pluck()
+          .get(),
+      ).toBe(0);
+    });
+  });
 });
 
 describe('schema after migrations', () => {
@@ -163,8 +212,11 @@ describe('schema after migrations', () => {
     insertOffer(seller, 'aaaa1111-bbbb-4222-cccc-dddd33334444', 781);
 
     expect(
-      db.prepare('SELECT DISTINCT SellerId FROM SellerProduct WHERE ProductId = 781').all(),
-    ).toHaveLength(1);
+      db
+        .prepare('SELECT COUNT(*) FROM SellerProduct WHERE SellerId = ? AND ProductId = 781')
+        .pluck()
+        .get(seller),
+    ).toBe(2);
   });
 
   it('rejects the same SKU twice for one seller', () => {
@@ -177,10 +229,13 @@ describe('schema after migrations', () => {
   });
 
   it('allows the same SKU for different sellers', () => {
-    insertOffer(insertSeller('GardenStore'), '00112233-4455-4667-7889-900112233445', 1);
-    insertOffer(insertSeller('SportsHub'), '00112233-4455-4667-7889-900112233445', 2);
+    const sku = '00112233-4455-4667-7889-900112233445';
+    insertOffer(insertSeller('GardenStore'), sku, 1);
+    insertOffer(insertSeller('SportsHub'), sku, 2);
 
-    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(2);
+    expect(
+      db.prepare('SELECT COUNT(*) FROM SellerProduct WHERE SellerProductId = ?').pluck().get(sku),
+    ).toBe(2);
   });
 
   it('enforces foreign keys', () => {

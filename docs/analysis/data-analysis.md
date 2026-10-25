@@ -199,6 +199,7 @@ Depois do matching:
 - **777 produtos do catálogo não recebem nenhum seller.**
   - **Ambiguidade:** esses produtos pertencem à própria loja, que passa a ser um seller do marketplace? O enunciado diz que "a empresa tem um catálogo com tudo que vende".
   - **Opção:** ligar o catálogo existente a um seller próprio. Seria uma migração de dados. Não é necessário para o desafio, mas vale citar.
+  - **Decidido (2026-10-25):** o marketplace é um seller (`Marketplace`) e oferta todos os produtos existentes, através da migração 002 ([plano 003](../plans/003-marketplace-seller.md)). Com isso, nenhum produto fica sem seller.
 
 ### 3.3 Divergências de atributos e enriquecimento
 
@@ -226,12 +227,14 @@ Depois do matching:
 | 11 | Chave estrangeira não verificada | `PRAGMA foreign_keys = ON` em cada conexão |
 | 12 | Sem índices | Índice no nome normalizado, ou índice em memória, já que o catálogo é pequeno |
 | 13 | Nenhum produto legítimo novo no arquivo | Criar dados de teste próprios para o caminho "produto novo", incluindo dois sellers enviando o mesmo produto novo no mesmo arquivo |
-| 14 | 777 produtos sem seller | Documentar a hipótese sobre o catálogo próprio |
+| 14 | 777 produtos sem seller | **Decidido:** seller `Marketplace` com uma oferta para cada produto existente (migração 002) |
 
 ## 5. Resultado esperado como teste de aceitação
 
 A classificação da seção 3.1 serve de gabarito. Com as decisões tomadas (uma oferta por SKU do seller e qualquer ID não vazio aceito), uma execução correta sobre o arquivo deve resultar em:
 - **1 produto novo:** o `Security Test Product` (#180), com a marca gravada literalmente como texto.
 - **0 itens rejeitados.**
-- **268 ofertas** em `SellerProduct`: 269 itens, menos o reenvio da câmera com o mesmo `(seller, id)` (#55 e #76), que resulta numa só oferta.
+- **268 ofertas novas** em `SellerProduct`: 269 itens, menos o reenvio da câmera com o mesmo `(seller, id)` (#55 e #76), que resulta numa só oferta.
+  - Somadas às 975 ofertas do seller `Marketplace` (migração 002), são **1.243 ofertas** no total.
+  - O `Security Test Product`, criado pela importação, não ganha oferta do `Marketplace`.
 - **Nenhum link para um produto errado,** verificado contra a tabela da seção 3.1.

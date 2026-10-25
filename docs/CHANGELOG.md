@@ -51,3 +51,13 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
 18. **Nova preferência (7): README para os avaliadores.** Registrada no `CLAUDE.md`: manter o `README.md` atualizado a cada mudança, sem duplicar `docs/` e sem reproduzir o conteúdo confidencial de `docs/challenge/`.
 19. **`README.md` criado.** Contém o problema descrito com palavras próprias, o status, como rodar, os achados dos dados, o modelo de dados, a tabela de decisões e hipóteses, a abordagem de matching planejada, a estrutura do repositório, a stack e o uso de IA.
 20. **Commit e push** do `README.md` e da preferência 7.
+21. **Decisão: o marketplace é um seller.** O próprio marketplace (`Marketplace`) oferta todos os produtos do catálogo atual, o que resolve a última decisão pendente (os 777 produtos sem seller). Plano em `docs/plans/003-marketplace-seller.md`.
+    - `migrations/002_marketplace_seller.ts` é uma migração de dados que cria o seller e 975 ofertas, com `SellerProductId = Product.Id` em texto. O `down` remove só o que ela criou.
+    - Testes: 975 ofertas, nenhum produto sem seller e reversão isolada da 002. Os testes existentes foram ajustados para a presença do novo seller. São 19 testes no total.
+    - `data-analysis.md` §3.2, §4 (item 14) e §5 foram atualizados. O gabarito agora é de 1.243 ofertas no total.
+    - `CLAUDE.md` e `README.md` também foram atualizados.
+22. **Discussão: o marketplace como caso especial na importação.** A ideia de um parâmetro de configuração com o ID do marketplace foi criticada.
+    - Excluir o marketplace só da busca não basta: criar um seller com o mesmo nome bateria no `UNIQUE`. O certo é rejeitar o item.
+    - O ID é atribuído pelo banco, então guardá-lo numa configuração cria duas fontes da verdade.
+    - A proposta é uma coluna `Seller.IsMarketplace` com índice único parcial. A decisão foi adiada pelo usuário e registrada como pendente no `CLAUDE.md`.
+23. **Commit e push** da migração 002 (seller `Marketplace`), do plano 003 e da documentação atualizada.

@@ -58,6 +58,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - `Seller (Id, Name UNIQUE COLLATE NOCASE)`.
   - `SellerProduct (SellerId, SellerProductId TEXT, ProductId)`, com chave primária `(SellerId, SellerProductId)`, `WITHOUT ROWID` e índice em `ProductId`.
   - **Cada linha é uma oferta (um SKU do seller).** Um seller pode ter vários SKUs para o mesmo produto.
+- **Após a migração 002:** existe o seller `Marketplace` (o próprio marketplace), com uma oferta para cada um dos 975 produtos. O `SellerProductId` dessas ofertas é o `Product.Id` em texto.
 - **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.
@@ -67,6 +68,6 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 ## Decisões pendentes
 
-- Os 777 produtos do catálogo sem seller pertencem à própria loja?
+- **Como identificar o seller do marketplace** (adiado pelo usuário). Opções: coluna `Seller.IsMarketplace` na migração 002 (recomendada; a 002 ainda não foi commitada), coluna numa migração 003, ou só o nome `MARKETPLACE_SELLER_NAME` como reservado. **Requisito para a importação, qualquer que seja a opção:** procurar os sellers do arquivo excluindo o marketplace e rejeitar, com motivo no relatório, um item cujo seller tenha o nome do marketplace. Excluir só da busca não basta, porque criar o seller bateria no `UNIQUE`.
 
 Ao decidir, mova o item para o plano ou o changelog correspondente.
