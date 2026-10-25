@@ -24,5 +24,5 @@ output/
 .vscode/
 .DS_Store
 
-# Confidential VTEX documents (kept locally only)
-docs/*.pdf
+# Confidential VTEX challenge material (kept locally only)
+docs/challenge/
