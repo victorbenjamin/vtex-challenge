@@ -48,3 +48,6 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Custo aceito:** um ID digitado errado pode gerar uma oferta duplicada quando o seller reenviar com o código correto.
     - `data-analysis.md` §4 (item 4) e §5 (gabarito) foram atualizados. O gabarito agora é 1 produto novo, 0 rejeitados e 268 ofertas.
 17. **Commit e push** da migração de schema (Knex), das decisões de modelagem e de IDs, e da documentação atualizada.
+18. **Nova preferência (7): README para os avaliadores.** Registrada no `CLAUDE.md`: manter o `README.md` atualizado a cada mudança, sem duplicar `docs/` e sem reproduzir o conteúdo confidencial de `docs/challenge/`.
+19. **`README.md` criado.** Contém o problema descrito com palavras próprias, o status, como rodar, os achados dos dados, o modelo de dados, a tabela de decisões e hipóteses, a abordagem de matching planejada, a estrutura do repositório, a stack e o uso de IA.
+20. **Commit e push** do `README.md` e da preferência 7.

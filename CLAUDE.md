@@ -13,6 +13,10 @@ Take-home da VTEX, "Catalog Consolidation": importar produtos de vários sellers
    - `data/catalog.db` é somente leitura: abra sempre com `{ readonly: true }`.
    - Toda alteração de schema é feita por **migração**: um arquivo versionado, aplicado em ordem e idempotente.
    - Toda migração é **testada e executada contra uma cópia** do banco original, por exemplo em `output/` ou num arquivo temporário nos testes. Nunca contra o original.
+7. **README para os avaliadores.** Mantenha o `README.md` da raiz atualizado sempre que algo mudar: comandos, schema, decisões, status ou limitações. Ele é escrito para os avaliadores entenderem o projeto sem ler o resto.
+   - Ele **resume e aponta** para `docs/`, sem duplicar o conteúdo.
+   - É público: descreve o problema com palavras próprias e **nunca reproduz** o conteúdo de `docs/challenge/`.
+   - Ao atualizar o changelog, verifique se o README também precisa mudar.
 
 ## Stack e comandos
 
@@ -39,6 +43,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 | Arquivo                                    | Quando ler                                                                                                                                                                          |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                                | Visão do projeto para os avaliadores: status, decisões e como rodar. Atualize-o junto com as mudanças (preferência 7).                                                              |
 | `docs/CHANGELOG.md`                        | Para saber o que já foi feito e em que ordem                                                                                                                                        |
 | `docs/plans/`                              | Antes de implementar algo. Verifique se existe um plano relacionado.                                                                                                                |
 | `docs/analysis/data-analysis.md`           | Para decisões sobre schema, validação, normalização, matching ou testes. A seção 4 lista as decisões que saem dos dados, e a seção 5 é o gabarito de aceitação.                     |
