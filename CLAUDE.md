@@ -9,16 +9,33 @@ Take-home da VTEX, "Catalog Consolidation": importar produtos de vários sellers
 3. **Changelog.** Registre em `docs/CHANGELOG.md` tudo o que for feito, em ordem cronológica e com entradas novas no fim. Inclua o que mudou e onde, e o motivo quando não for óbvio.
 4. **Planos salvos.** Toda tarefa que tiver plano tem o plano salvo em `docs/plans/`, no formato descrito em `docs/plans/README.md`. Mantenha o status e os desvios atualizados durante a execução.
 5. **Docs enxutos e navegáveis.** Organize a documentação para dar contexto rápido sem carregar o que não é necessário. Não use `@imports` aqui, e leia cada documento só quando a tarefa pedir.
+6. **O banco original nunca é alterado.**
+   - `data/catalog.db` é somente leitura: abra sempre com `{ readonly: true }`.
+   - Toda alteração de schema é feita por **migração**: um arquivo versionado, aplicado em ordem e idempotente.
+   - Toda migração é **testada e executada contra uma cópia** do banco original, por exemplo em `output/` ou num arquivo temporário nos testes. Nunca contra o original.
+
+## Stack e comandos
+
+TypeScript (ESM, `strict`), Node `>=22`, `better-sqlite3`, `tsx`, `vitest` e `prettier`. Os motivos estão em `docs/plans/001-typescript-environment.md`.
+
+```bash
+npm start              # roda src/index.ts com tsx
+npm run typecheck      # tsc --noEmit (o tsx não verifica tipos)
+npm test               # vitest run (tests/**/*.test.ts)
+npm run format:check   # prettier
+```
+
+Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`.
 
 ## Mapa da documentação: leia sob demanda
 
-| Arquivo | Quando ler |
-|---|---|
-| `docs/CHANGELOG.md` | Para saber o que já foi feito e em que ordem |
-| `docs/plans/` | Antes de implementar algo. Verifique se existe um plano relacionado. |
-| `docs/analysis/data-analysis.md` | Para decisões sobre schema, validação, normalização, matching ou testes. A seção 4 lista as decisões que saem dos dados, e a seção 5 é o gabarito de aceitação. |
-| `docs/analysis/entity-resolution-study.md` | Para escolher ou justificar uma técnica de matching. A seção 2 trata do trade-off entre precisão e recall, e a seção 5 da cascata recomendada. |
-| `docs/challenge/summary.md` | Para o enunciado e as orientações da VTEX. Esta pasta é **local e confidencial**: está no `.gitignore` e nada dela deve ir para arquivos versionados. Prefira este resumo aos PDFs. |
+| Arquivo                                    | Quando ler                                                                                                                                                                          |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/CHANGELOG.md`                        | Para saber o que já foi feito e em que ordem                                                                                                                                        |
+| `docs/plans/`                              | Antes de implementar algo. Verifique se existe um plano relacionado.                                                                                                                |
+| `docs/analysis/data-analysis.md`           | Para decisões sobre schema, validação, normalização, matching ou testes. A seção 4 lista as decisões que saem dos dados, e a seção 5 é o gabarito de aceitação.                     |
+| `docs/analysis/entity-resolution-study.md` | Para escolher ou justificar uma técnica de matching. A seção 2 trata do trade-off entre precisão e recall, e a seção 5 da cascata recomendada.                                      |
+| `docs/challenge/summary.md`                | Para o enunciado e as orientações da VTEX. Esta pasta é **local e confidencial**: está no `.gitignore` e nada dela deve ir para arquivos versionados. Prefira este resumo aos PDFs. |
 
 ## Fatos essenciais (detalhes em `docs/analysis/data-analysis.md`)
 
@@ -29,11 +46,10 @@ Take-home da VTEX, "Catalog Consolidation": importar produtos de vários sellers
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.
 - **Falsos positivos:** fuzzy matching ingênuo junta produtos diferentes (Multivitamin Men e Women, 0.94). A precisão vem antes do recall.
 - **Queries sempre parametrizadas.** O arquivo contém uma tentativa de SQL injection.
-- **Não modifique `data/catalog.db`:** é a entrada original. Trabalhe numa cópia, por exemplo em `output/`, que está no `.gitignore`.
+- **`data/catalog.db` é a entrada original e não pode ser alterada** (preferência 6). O trabalho acontece numa cópia em `output/`, que está no `.gitignore`.
 
 ## Decisões pendentes
 
-- Linguagem e stack.
 - Mesmo seller enviando o mesmo produto com IDs diferentes (10 casos): um link por SKU ou um por produto?
 - IDs malformados (3): rejeitar ou aceitar?
 - Os 777 produtos do catálogo sem seller pertencem à própria loja?

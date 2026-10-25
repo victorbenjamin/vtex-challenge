@@ -23,3 +23,11 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
    - `docs/` reorganizado em `analysis/`, `plans/` e `challenge/` (esta última local e no `.gitignore`).
    - Criados este changelog e o resumo local do desafio.
 9. **Commit e push** do `CLAUDE.md`, do changelog e da reorganização de `docs/`.
+10. **Ambiente TypeScript.** Plano em `docs/plans/001-typescript-environment.md`.
+    - `package.json` (ESM, Node `>=22`), `tsconfig.json` estrito, `vitest.config.ts`, `.prettierrc`, `.prettierignore` e `.nvmrc`.
+    - Dependências: `better-sqlite3`; para desenvolvimento, `typescript` 7, `tsx`, `vitest`, `prettier` e os tipos.
+    - `src/index.ts` provisório e `tests/environment.test.ts`, um teste de fumaça que lê o `catalog.db` somente para leitura e confirma 975 produtos.
+    - Os scripts `typecheck`, `test` e `format:check` passam.
+    - `CLAUDE.md` atualizado com a stack e os comandos.
+11. **Nova preferência (6): o banco original nunca é alterado.** Mudanças de schema só por migrações versionadas, testadas e executadas contra uma cópia do `catalog.db`. Registrada no `CLAUDE.md`.
+12. **Commit e push** do ambiente TypeScript e da preferência 6.
