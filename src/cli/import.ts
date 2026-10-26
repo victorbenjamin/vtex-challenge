@@ -9,6 +9,15 @@ import { openWorkingDatabase, WORKING_DATABASE_PATH } from '../infrastructure/sq
 // Imports into the working copy output/catalog.db and logs how many items ended in each outcome.
 const file = resolve(process.argv[2] ?? 'data/ProductEntry.json');
 
+// The file is read before any write, so an invalid file changes nothing.
+let items: unknown[];
+try {
+  items = readImportFile(file);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+
 if (!existsSync(WORKING_DATABASE_PATH)) {
   console.error('Working database not found. Run "npm run db:migrate" first.');
   process.exit(1);
@@ -20,7 +29,7 @@ if (!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'Seller'").get()) {
   process.exit(1);
 }
 
-const summary = new ImportCatalog(new CatalogDatabase(db)).execute(readImportFile(file));
+const summary = new ImportCatalog(new CatalogDatabase(db)).execute(items);
 db.close();
 
 const counts = summary.counts();

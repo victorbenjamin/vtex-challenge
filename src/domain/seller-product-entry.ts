@@ -7,6 +7,15 @@ const isNonEmptyText = (value: unknown): value is string =>
 const isOptionalText = (value: unknown): value is string | null | undefined =>
   value === null || value === undefined || typeof value === 'string';
 
+// A seller's own code for the item: non-empty text, or a whole number, read as text so
+// that 123 and "123" are the same SKU. A decimal number is more likely corrupt than a code.
+const sellerProductIdOf = (value: unknown): string | undefined => {
+  if (isNonEmptyText(value)) {
+    return value;
+  }
+  return Number.isSafeInteger(value) ? String(value) : undefined;
+};
+
 // A product as a seller sent it in an import file. Only valid entries can exist.
 export class SellerProductEntry {
   private constructor(
@@ -18,14 +27,16 @@ export class SellerProductEntry {
   ) {}
 
   // Returns undefined for an invalid item. The seller's Id is accepted in any non-empty
-  // format: it belongs to the seller. The product name is kept exactly as received.
+  // format, text or whole number: it belongs to the seller. The product name is kept
+  // exactly as received.
   static parse(raw: unknown): SellerProductEntry | undefined {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
       return undefined;
     }
     const { Id, SellerName, Name, Brand, Category } = raw as Record<string, unknown>;
+    const sellerProductId = sellerProductIdOf(Id);
     if (
-      !isNonEmptyText(Id) ||
+      sellerProductId === undefined ||
       !isNonEmptyText(SellerName) ||
       !isNonEmptyText(Name) ||
       !isOptionalText(Brand) ||
@@ -33,7 +44,13 @@ export class SellerProductEntry {
     ) {
       return undefined;
     }
-    return new SellerProductEntry(Id, SellerName.trim(), Name, Brand ?? null, Category ?? null);
+    return new SellerProductEntry(
+      sellerProductId,
+      SellerName.trim(),
+      Name,
+      Brand ?? null,
+      Category ?? null,
+    );
   }
 
   get normalizedName(): string {

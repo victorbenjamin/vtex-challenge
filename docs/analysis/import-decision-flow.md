@@ -69,7 +69,7 @@ Cada item termina em exatamente um resultado, contado no `ImportSummary` (`src/d
 
 | Resultado | Quando acontece | O que é gravado | Exemplo |
 |---|---|---|---|
-| `rejected` | **Item inválido:** `Id`, `SellerName` ou `Name` ausente ou vazio; `Brand` ou `Category` com tipo errado; o item não é um objeto. | Nada | `{ "Id": "", ... }` (não há caso no arquivo) |
+| `rejected` | **Item inválido:** `SellerName` ou `Name` ausente ou vazio; `Id` que não é texto não vazio nem número inteiro (um inteiro é lido como texto: `123` = `"123"`); `Brand` ou `Category` com tipo errado; o item não é um objeto. | Nada | `{ "Id": "", ... }` (não há caso no arquivo) |
 | `linked` | Exatamente **um** produto com o mesmo nome normalizado (próprio ou traduzido) e a mesma marca normalizada, e o seller **ainda não tinha** oferta para esse SKU. | O seller, se for novo, e a oferta (seller, SKU, produto) | #0 MegaStore `Smartphone Galaxy S23` → 2; #57 `Roteador WiFi 6 TP-Link` → 21 (tradução) |
 | `alreadyLinked` | O produto foi encontrado, e o seller **já tinha** oferta para esse SKU **apontando para o mesmo produto**. É um reenvio ou uma reimportação. | Nada (idempotente) | #76 GardenStore `Camera Canon EOS R6`, com o mesmo SKU da #55 `Câmera…`; qualquer item na segunda execução |
 | `conflict` | O seller **já tinha** oferta para esse SKU **apontando para outro produto**, ou o item criaria um produto novo para um SKU que já aponta para algum. A oferta existente nunca é sobrescrita, e nada é criado. | Nada | Reenviar `sku-1` da MegaStore descrevendo outro produto (não há caso no arquivo) |

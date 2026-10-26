@@ -191,3 +191,13 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **197 testes,** incluindo os cenários de recorrência perguntados pelo usuário (revisão pendente, depois do merge e depois de marcar como distintos) e o merge que desfaz uma ambiguidade do catálogo. A importação do arquivo do desafio não mudou.
     - `README.md`, `CLAUDE.md` e `import-decision-flow.md` foram atualizados.
 49. **Commit e push** do merge de produtos duplicados (plano 012), da migração 008 e da documentação.
+50. **Planos 013, 014 e 015 propostos,** para preparar a importação para arquivos diferentes do desafio, que podem ser usados na entrevista. Um teste numa cópia descartável mostrou três lacunas:
+    - **013:** aceitar `Id` numérico (hoje rejeitado; o schema original era `INTEGER`) e mostrar um erro de uma linha para um arquivo inválido (hoje sai o erro bruto do Node).
+    - **014:** relatório detalhado, item a item, com o motivo de cada resultado (inclusive os candidatos de um item ambíguo), gravado em fluxo em `output/import-report.ndjson`.
+    - **015:** um erro de digitação ou uma ordem diferente de palavras hoje cria uma **duplicata silenciosa**. A similaridade passa a marcar esses casos para revisão (`similarName`), **sem nunca ligar a oferta**.
+51. **Plano 013 executado: IDs numéricos e erros de arquivo amigáveis.**
+    - `SellerProductEntry.parse` aceita `Id` como texto não vazio ou como inteiro seguro, lido como texto (`123` e `"123"` são o mesmo SKU). Decimais, `NaN`, `Infinity`, inteiros fora do intervalo seguro, booleanos e objetos continuam rejeitados.
+    - `readImportFile` lança mensagens de uma linha, com o caminho do arquivo, para arquivo inexistente, JSON malformado (com o motivo do parser) e JSON que não é array. O CLI de importação mostra a mensagem e sai com código 1, sem gravar nada.
+    - **210 testes;** novo `tests/infrastructure/import-file.test.ts`. A importação do arquivo do desafio não mudou.
+    - `README.md` e `import-decision-flow.md` foram atualizados.
+52. **Commit e push** do plano 013 (IDs numéricos e erros de arquivo) e dos planos propostos 014 e 015.

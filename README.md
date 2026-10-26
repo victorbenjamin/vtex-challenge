@@ -102,7 +102,9 @@ O desafio tem ambiguidades intencionais. Cada decisão abaixo tem a justificativ
 
 A importação segue uma cascata, do critério mais rígido para o mais tolerante ([estudo §5](docs/analysis/entity-resolution-study.md)):
 
-1. ✅ **Validar a entrada.** `Id`, `SellerName` e `Name` precisam ser texto não vazio. `Brand` e `Category` podem ser nulos. Itens inválidos são contados como rejeitados.
+1. ✅ **Validar a entrada.** `SellerName` e `Name` precisam ser texto não vazio. `Brand` e `Category` podem ser nulos. Itens inválidos são contados como rejeitados.
+   - **O `Id` do seller** pode ser texto não vazio ou número inteiro, lido como texto: `123` e `"123"` são o mesmo SKU. Um número decimal é rejeitado, por ser mais provavelmente um dado corrompido do que um código.
+   - **Um arquivo inválido** (inexistente, JSON malformado, ou JSON que não é um array) gera uma mensagem de uma linha e código de saída 1, sem gravar nada.
 2. ✅ **Match por nome normalizado e marca normalizada.**
    - **Nome:** a normalização remove acentos, ignora caixa, remove as aspas de polegada (`''` e `"`) e junta espaços. Preserva números, pontos, hífens e barras, porque são o que diferencia modelos.
    - **Um nome exatamente igual também casa por aqui:** a normalização não altera o que já é igual. Por isso não existe uma etapa separada de match exato.

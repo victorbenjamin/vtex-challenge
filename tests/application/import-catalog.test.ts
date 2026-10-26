@@ -426,6 +426,17 @@ describe('ImportCatalog', () => {
     });
   });
 
+  it('treats a numeric seller id and the same id as text as the same SKU', () => {
+    expect(countsOf([{ Id: 123, SellerName: 'MegaStore', ...galaxy }])).toMatchObject({
+      linked: 1,
+    });
+    expect(offersOf('MegaStore')).toEqual([['123', 2]]);
+
+    expect(countsOf([{ Id: '123', SellerName: 'MegaStore', ...galaxy }])).toMatchObject({
+      alreadyLinked: 1,
+    });
+  });
+
   it('rejects invalid items without stopping the import', () => {
     expect(
       countsOf([

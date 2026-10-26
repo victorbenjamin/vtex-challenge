@@ -47,9 +47,22 @@ describe('SellerProductEntry.parse', () => {
   );
 
   it.each([
+    [123, '123'],
+    [0, '0'],
+    [-7, '-7'],
+  ])('accepts the whole-number seller id %j, read as %j', (Id, sellerProductId) => {
+    expect(SellerProductEntry.parse({ ...valid, Id })?.sellerProductId).toBe(sellerProductId);
+  });
+
+  it.each([
     ['Id', ''],
     ['Id', '   '],
-    ['Id', 123],
+    ['Id', 1.5],
+    ['Id', Number.NaN],
+    ['Id', Number.POSITIVE_INFINITY],
+    ['Id', 2 ** 53],
+    ['Id', true],
+    ['Id', { code: 1 }],
     ['SellerName', ''],
     ['SellerName', null],
     ['Name', undefined],
