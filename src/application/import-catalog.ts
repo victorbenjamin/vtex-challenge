@@ -64,7 +64,7 @@ export class ImportCatalog {
       case 'found':
         return this.offer(entry, match.productId, match.matchedBy);
       case 'notFound':
-        return this.createProduct(entry, match.similarProductIds);
+        return this.createProduct(entry, match.similarProductIds, matcher);
       case 'ambiguous':
         return ItemResult.ambiguous(entry, match.candidateProductIds);
       case 'tooManyCandidates':
@@ -88,19 +88,29 @@ export class ImportCatalog {
   // A product new to the catalog, offered by the seller. If the seller's SKU already points
   // to a product, nothing is created: the SKU cannot point to two products, and an existing
   // link is never overwritten.
-  private createProduct(entry: SellerProductEntry, similarProductIds: number[]): ItemResult {
+  //
+  // A product that may duplicate others is recorded for review: products with the same name
+  // under another brand, and products of the same brand with a similar name (a typo or
+  // another word order), so no duplicate is created silently.
+  private createProduct(
+    entry: SellerProductEntry,
+    sameNameProductIds: number[],
+    matcher: ProductMatcher,
+  ): ItemResult {
     const sellerId = this.catalog.findOrCreateSeller(entry.sellerName);
     const existingProductId = this.catalog.findOfferProductId(sellerId, entry.sellerProductId);
     if (existingProductId !== undefined) {
       return ItemResult.skuConflict(entry, existingProductId);
     }
 
+    const similarNameProductIds = matcher.similarNamesOf(entry);
     const productId = this.catalog.createProduct(entry);
     this.catalog.addOfferIfAbsent(new Offer(sellerId, entry.sellerProductId, productId));
-    if (similarProductIds.length === 0) {
+    if (sameNameProductIds.length === 0 && similarNameProductIds.length === 0) {
       return ItemResult.created(entry, productId);
     }
-    this.catalog.addProductReviews(productId, similarProductIds, 'sameNameOtherBrand');
-    return ItemResult.createdForReview(entry, productId, similarProductIds);
+    this.catalog.addProductReviews(productId, sameNameProductIds, 'sameNameOtherBrand');
+    this.catalog.addProductReviews(productId, similarNameProductIds, 'similarName');
+    return ItemResult.createdForReview(entry, productId, sameNameProductIds, similarNameProductIds);
   }
 }

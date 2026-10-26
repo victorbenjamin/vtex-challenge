@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CANDIDATE_LIMIT } from '../../src/application/import-catalog.ts';
+import { MergeProducts } from '../../src/application/merge-products.ts';
+import { CatalogDatabase } from '../../src/infrastructure/sqlite/catalog-database.ts';
 import type { ImportRecord } from '../../src/domain/import-record.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
 import {
@@ -594,6 +596,125 @@ describe('ImportCatalog report records', () => {
     expect(records.map(({ index, outcome, reason }) => [index, outcome, reason])).toEqual([
       [0, 'linked', 'matchedByName'],
       [1, 'failed', 'write failed'],
+    ]);
+  });
+});
+
+describe('ImportCatalog similar names', () => {
+  const similarReviews = () =>
+    db
+      .prepare(
+        `SELECT SimilarProductId, Reason FROM ProductReview WHERE Status = 'pending' ORDER BY Id`,
+      )
+      .raw()
+      .all();
+
+  it.each([
+    ['a typo', 'Smarthpone Galaxy S23'],
+    ['another word order', 'Galaxy S23 Smartphone'],
+  ])('creates a product for review when the name has %s', (_, Name) => {
+    const records: ImportRecord[] = [];
+    sqliteImportCatalog(db).execute(
+      [{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Name }],
+      (record) => records.push(record),
+    );
+
+    expect(records[0]).toMatchObject({
+      outcome: 'createdForReview',
+      reason: 'similarNameExists',
+      similarProductIds: [2],
+    });
+    expect(similarReviews()).toEqual([[2, 'similarName']]);
+  });
+
+  it('creates another model without review', () => {
+    expect(
+      countsOf([
+        { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Name: 'Smartphone Galaxy S24' },
+      ]),
+    ).toMatchObject({ created: 1, createdForReview: 0 });
+    expect(similarReviews()).toEqual([]);
+  });
+
+  it('only compares names within the brand', () => {
+    expect(
+      countsOf([
+        {
+          Id: 'sku-1',
+          SellerName: 'MegaStore',
+          ...galaxy,
+          Name: 'Smarthpone Galaxy S23',
+          Brand: 'Xiaomi',
+        },
+      ]),
+    ).toMatchObject({ created: 1, createdForReview: 0 });
+  });
+
+  it('does not take another model of the brand for a similar name', () => {
+    db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    ).run(
+      'Smartphone Galaxy S23 Ultra',
+      'Samsung Mobile',
+      'Electronics',
+      'smartphone galaxy s23 ultra',
+    );
+
+    expect(
+      countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Brand: 'Samsung Mobile' }]),
+    ).toMatchObject({ createdForReview: 1 });
+    expect(similarReviews()).toEqual([[2, 'sameNameOtherBrand']]);
+  });
+
+  it('records both reasons when the name exists under another brand and is similar within its own', () => {
+    db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    ).run('Smartphne Galaxy S23', 'Samsung Mobile', 'Electronics', 'smartphne galaxy s23');
+
+    const records: ImportRecord[] = [];
+    sqliteImportCatalog(db).execute(
+      [
+        {
+          Id: 'sku-1',
+          SellerName: 'MegaStore',
+          ...galaxy,
+          Name: 'Smartphone Galaxy S23',
+          Brand: 'Samsung Mobile',
+        },
+      ],
+      (record) => records.push(record),
+    );
+
+    expect(records[0]).toMatchObject({
+      outcome: 'createdForReview',
+      reason: 'nameExistsWithOtherBrand',
+    });
+    expect(similarReviews()).toEqual(
+      expect.arrayContaining([
+        [2, 'sameNameOtherBrand'],
+        [expect.any(Number), 'similarName'],
+      ]),
+    );
+  });
+
+  it('never looks for similar names when the entry matches a product', () => {
+    expect(countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy }])).toMatchObject({
+      linked: 1,
+    });
+    expect(similarReviews()).toEqual([]);
+  });
+
+  it('resolves the typo by merging: the misspelled name becomes an alias of the product', () => {
+    const typo = { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Name: 'Smarthpone Galaxy S23' };
+    run([typo]);
+    const duplicate = offersOf('MegaStore')[0]?.[1] as number;
+
+    new MergeProducts(new CatalogDatabase(db)).execute(duplicate, 2);
+
+    expect(countsOf([{ ...typo, Id: 'sku-2' }])).toMatchObject({ linked: 1, createdForReview: 0 });
+    expect(offersOf('MegaStore')).toEqual([
+      ['sku-1', 2],
+      ['sku-2', 2],
     ]);
   });
 });

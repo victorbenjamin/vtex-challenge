@@ -20,7 +20,7 @@ Take-home da VTEX, "Catalog Consolidation": importar produtos de vários sellers
 
 ## Stack e comandos
 
-TypeScript (ESM, `strict`), Node `>=22`, `better-sqlite3`, `knex` (só para migrações), `tsx`, `vitest` e `prettier`. Os motivos estão em `docs/plans/001-typescript-environment.md`.
+TypeScript (ESM, `strict`), Node `>=22`, `better-sqlite3`, `knex` (só para migrações), `fastest-levenshtein` (similaridade de nomes), `tsx`, `vitest` e `prettier`. Os motivos estão em `docs/plans/001-typescript-environment.md`.
 
 ```bash
 npm start              # roda src/index.ts com tsx
@@ -82,6 +82,9 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - `ImportCatalog` decide e grava, devolvendo resultados pelos construtores `ItemResult.*`;
   - `toImportRecord` monta o registro;
   - `ImportSummary.add` conta.
+- **Após a migração 009:** índice `IX_Product_Brand` e o motivo de revisão `similarName` (plano 015).
+  - Ao criar um produto, `ProductMatcher.similarNamesOf` compara o nome com os produtos ativos da mesma marca (`areSimilarNames`: palavras ordenadas, Levenshtein ≥ 0.85, os mesmos números) e registra as revisões.
+  - **A similaridade nunca liga uma oferta;** só gera revisão.
 - **Após a migração 008:** coluna `Product.MergedIntoId` (plano 012).
   - Um produto mesclado **não é apagado**: vira apelido do destino. `findProductsByNormalizedName` devolve `coalesce(MergedIntoId, Id)`, e os candidatos são deduplicados por id.
   - **Invariante:** `MergedIntoId` sempre aponta para um produto ativo. `markMerged` refaz a cadeia.

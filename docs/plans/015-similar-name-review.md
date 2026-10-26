@@ -1,6 +1,6 @@
 # 015: Revisão de nomes parecidos ao criar produto
 
-**Status:** proposto (2026-10-26)
+**Status:** concluído (2026-10-26)
 
 ## Objetivo
 
@@ -37,21 +37,35 @@ Inalterado: 267 ligados, 1 já ligado, 1 criado, 0 revisões. O #180 tem a marca
 
 ## Passos
 
-- [ ] Migração 009: índice em `Product (Brand COLLATE NOCASE)`; `ProductReview` recriada com `Reason IN ('sameNameOtherBrand', 'similarName')`, preservando os dados; `down`
-- [ ] Dependência `fastest-levenshtein`
-- [ ] `name-similarity.ts`: ordem das palavras, Levenshtein normalizado, números iguais; testes com os casos do estudo (Men/Women, S23/S24, typo, ordem)
-- [ ] `CatalogDatabase.findProductsOfBrand(brand, limit)`, com teste de uso do índice
-- [ ] `ImportCatalog`: ao criar, procurar os parecidos na marca e registrar `similarName`
-- [ ] Testes da aplicação: erro de digitação e ordem das palavras viram `createdForReview`; S23/S24 é criado sem revisão; um item que liga não procura parecidos; merge resolve
-- [ ] Aceitação inalterada
-- [ ] Atualizar o `import-decision-flow.md`, o `README.md`, o `CLAUDE.md`, o estudo (§5) e o changelog
-- [ ] Rodar `typecheck`, `test`, `format:check`, `db:reset` e `import`
+- [x] Migração 009: índice em `Product (Brand COLLATE NOCASE)`; `ProductReview` recriada com `Reason IN ('sameNameOtherBrand', 'similarName')`, preservando os dados; `down`
+- [x] Dependência `fastest-levenshtein`
+- [x] `name-similarity.ts`: ordem das palavras, Levenshtein normalizado, números iguais; testes com os casos do estudo (Men/Women, S23/S24, typo, ordem)
+- [x] `CatalogDatabase.findProductsOfBrand(brand, limit)`, com teste de uso do índice
+- [x] `ImportCatalog`: ao criar, procurar os parecidos na marca e registrar `similarName`
+- [x] Testes da aplicação: erro de digitação e ordem das palavras viram `createdForReview`; S23/S24 é criado sem revisão; um item que liga não procura parecidos; merge resolve
+- [x] Aceitação inalterada
+- [x] Atualizar o `import-decision-flow.md`, o `README.md`, o `CLAUDE.md`, o estudo (§5) e o changelog
+- [x] Rodar `typecheck`, `test`, `format:check`, `db:reset` e `import`
 
 ## Decisões a confirmar com o usuário
 
-- O limite de similaridade (0.85) e o teto de candidatos da marca (200).
-- `fastest-levenshtein` como dependência, ou uma função própria de cerca de 15 linhas.
+- **Executado com os valores propostos:** limite de similaridade 0.85, teto de 200 candidatos por marca, e a biblioteca `fastest-levenshtein` (o usuário já tinha pedido para não manter código fora do problema principal). Podem ser ajustados.
 
 ## Desvios
 
-Nenhum até agora.
+- **O método se chama `findActiveProductsOfBrand`** (o plano dizia `findProductsOfBrand`), porque exclui os produtos mesclados.
+- **A busca de parecidos fica no `ProductMatcher`** (`similarNamesOf`), junto com o resto da busca, e não no `ImportCatalog`.
+- **Motivo no relatório:** `similarNameExists`. Quando o nome também existe com outra marca, prevalece `nameExistsWithOtherBrand`.
+- **Nomes idênticos não são "parecidos":** são tratados pelo match de nome.
+- **Correção de um teste meu:** usei `Galaxy S23 Ultra` como exemplo de nome parecido, mas a regra corretamente não o considera parecido com `Galaxy S23` (similaridade 0.78): é outro modelo. O exemplo virou um teste próprio ("outro modelo da marca não é parecido").
+
+## Resultado
+
+- **263 testes passam,** contra o SQLite real e sem mocks. Os novos cobrem:
+  - a regra de similaridade: erro de digitação e ordem de palavras parecidos; outro número, tamanho ou modelo não; o alarme falso de Shirt/Shorts;
+  - a busca por marca: sem diferenciar maiúsculas, marca nula, sem os mesclados, com o índice;
+  - a migração 009: motivo novo, restrições, dados preservados, reversão;
+  - o caso de uso: revisão por nome parecido, só dentro da marca, os dois motivos juntos, um item que liga não procura parecidos, e o merge transformando o erro de digitação em apelido.
+- **Pelo CLI, numa cópia descartável:** `Smarthpone Galaxy S23` e `Galaxy S23 Smartphone` viraram revisões contra o #2 (e o segundo também contra o primeiro, criado logo antes).
+- **A importação do arquivo do desafio não mudou:** 267 ligados, 1 já ligado, 1 criado, 0 revisões.
+- O banco original continua intacto.

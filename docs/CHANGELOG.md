@@ -220,3 +220,12 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Comportamento inalterado:** os 232 testes passaram sem mudança, e o relatório saiu idêntico. Novos testes diretos em `tests/application/product-matcher.test.ts`: 237 no total.
     - `README.md` (arquitetura e estrutura), `CLAUDE.md` e o plano 014 foram atualizados.
 56. **Commit e push** do relatório detalhado (plano 014) e dos dois refactors do caso de uso.
+57. **Plano 015 executado: revisão de nomes parecidos ao criar produto,** com os valores propostos (limite 0.85, teto de 200 candidatos por marca, biblioteca `fastest-levenshtein`).
+    - **Migração 009:** índice `IX_Product_Brand` (`Brand COLLATE NOCASE`) e a `ProductReview` recriada com o motivo `similarName`, preservando os dados.
+    - `src/domain/name-similarity.ts` (`areSimilarNames`): palavras ordenadas, Levenshtein normalizado ≥ 0.85 e os mesmos números.
+    - `CatalogDatabase.findActiveProductsOfBrand` e `ProductMatcher.similarNamesOf`.
+    - **Ao criar um produto,** os produtos ativos da mesma marca com nome parecido viram revisões `similarName`, e o item sai como `createdForReview` (`similarNameExists`). **A similaridade nunca liga uma oferta.**
+    - **Fecha a lacuna da duplicata silenciosa:** um erro de digitação ou uma ordem diferente de palavras deixa de criar produto sem revisão. O merge transforma a grafia errada em apelido.
+    - **263 testes.** A importação do arquivo do desafio não mudou.
+    - `README.md`, `CLAUDE.md`, `import-decision-flow.md` e o estudo (§5, como ficou na implementação) foram atualizados.
+58. **Commit e push** da revisão de nomes parecidos (plano 015), da migração 009 e da documentação.

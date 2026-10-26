@@ -38,14 +38,15 @@ Como a importação decide o que fazer com cada item do arquivo, e quais resulta
    └─────────┬────────────────────────────────────┘
              │ não
    ┌─────────▼──────────────────────────────────────────────┐
-   │  O NOME (próprio ou traduzido) existe no catálogo,      │
-   │  só que com OUTRA MARCA?                                │
+   │  O NOME (próprio ou traduzido) existe com OUTRA MARCA?  │
+   │  Ou a MESMA MARCA tem um produto de nome PARECIDO       │
+   │  (erro de digitação, outra ordem de palavras)?          │
    └─────────┬───────────────────────────────┬──────────────┘
-             │ não: o nome é inédito         │ sim
+             │ nenhum dos dois               │ algum dos dois
              ▼                               ▼
       CRIA PRODUTO + oferta           CRIA PRODUTO + oferta
                                       + registra "possível duplicata"
-                                        de cada produto com o nome,
+                                        de cada produto encontrado,
                                         para revisão e merge posterior
 
 
@@ -57,6 +58,9 @@ Como a importação decide o que fazer com cada item do arquivo, e quais resulta
 
 **Princípio por trás do desenho:** o erro caro é **ligar a oferta ao produto errado**, porque o cliente compraria uma coisa e receberia outra. Uma duplicata é recuperável com um merge ([estudo §2](entity-resolution-study.md)). Por isso:
 - **Na dúvida sobre a marca,** o seller ganha um produto próprio, nunca o de outra marca, e a suspeita fica registrada em `ProductReview` (migração 007) para alguém revisar.
+- **Na dúvida sobre a grafia do nome** (plano 015): ao criar um produto, o nome é comparado com os produtos ativos **da mesma marca**. Um nome parecido também vira revisão.
+  - A comparação ordena as palavras, mede a similaridade de Levenshtein (limite 0.85) e exige os **mesmos números** (`S23` e `S24` nunca são parecidos).
+  - **A similaridade nunca liga uma oferta:** no pior caso, gera uma revisão a mais (`Compression Shirt` e `Compression Shorts`).
 - **Um item ambíguo nunca cria produto:** se há vários produtos com o mesmo nome e a mesma marca, o produto existe, só não se sabe qual. Criar outro seria duplicata garantida.
 - **A revisão é resolvida pelo comando `catalog`** (plano 012):
   - `merge` move as ofertas da duplicata para o produto certo (um `UPDATE` de `ProductId` em `SellerProduct`) e marca a duplicata com `MergedIntoId`;
@@ -72,7 +76,7 @@ Cada item termina em exatamente um resultado, contado no `ImportSummary` (`src/d
 | `linked`, `alreadyLinked` | `matchedByName` ou `matchedByTranslatedName` | `productId` |
 | `conflict` | `skuPointsToAnotherProduct` | `existingProductId` (e `productId`, se o item casou com um produto) |
 | `created` | `nameNotInCatalog` | `productId` |
-| `createdForReview` | `nameExistsWithOtherBrand` | `productId`, `similarProductIds` |
+| `createdForReview` | `nameExistsWithOtherBrand` ou `similarNameExists` (se as duas se aplicam, prevalece a primeira) | `productId`, `similarProductIds` |
 | `unmatched` | `ambiguous` ou `tooManyCandidates` | `candidateProductIds` (se ambíguo) |
 | `rejected` | o campo inválido, por exemplo `Name must be non-empty text` | (nenhum) |
 | `failed` | o erro que parou a importação | (nenhum) |
@@ -86,7 +90,7 @@ Os itens válidos também levam `sellerName`, `sellerProductId`, `name` e `brand
 | `alreadyLinked` | O produto foi encontrado, e o seller **já tinha** oferta para esse SKU **apontando para o mesmo produto**. É um reenvio ou uma reimportação. | Nada (idempotente) | #76 GardenStore `Camera Canon EOS R6`, com o mesmo SKU da #55 `Câmera…`; qualquer item na segunda execução |
 | `conflict` | O seller **já tinha** oferta para esse SKU **apontando para outro produto**, ou o item criaria um produto novo para um SKU que já aponta para algum. A oferta existente nunca é sobrescrita, e nada é criado. | Nada | Reenviar `sku-1` da MegaStore descrevendo outro produto (não há caso no arquivo) |
 | `created` | Nenhum produto da mesma marca, e **nenhum produto com o nome** (próprio ou traduzido), de nenhuma marca. O produto é criado como o seller o descreveu, com o `NormalizedName`, e a oferta é ligada. Ele **não** ganha oferta do `Marketplace`. | O produto, o seller (se for novo) e a oferta | #180 `Security Test Product`, com a marca `TestBrand'; SELECT 1; --` gravada literalmente como texto |
-| `createdForReview` | Nenhum produto da mesma marca, mas **o nome existe com outra marca**. O produto é criado e ligado como em `created`, e cada produto existente com o nome fica registrado como possível duplicata (`ProductReview`, status `pending`). | O produto, o seller (se for novo), a oferta e as revisões | `Smartphone Galaxy S23` / `Samsung Electronics`, parecido com o #2 / `Samsung` (não há caso no arquivo) |
+| `createdForReview` | Nenhum produto da mesma marca, mas **o nome existe com outra marca**, ou **a mesma marca tem um produto de nome parecido** (erro de digitação, outra ordem de palavras). O produto é criado e ligado como em `created`, e cada produto encontrado fica registrado como possível duplicata (`ProductReview`, status `pending`, motivo `sameNameOtherBrand` ou `similarName`). | O produto, o seller (se for novo), a oferta e as revisões | `Smartphone Galaxy S23` / `Samsung Electronics`, parecido com o #2 / `Samsung`; `Smarthpone Galaxy S23` / `Samsung`, parecido com o #2 (não há caso no arquivo) |
 | `unmatched` | **Ambíguo:** dois ou mais produtos com o mesmo nome e a mesma marca, mesmo com categorias diferentes. Se o nome do próprio item é ambíguo, a tradução não é tentada. | Nada | Dois `Yoga Mat` da `Gaiam` no catálogo (não há caso no arquivo) |
 | `unmatched` | **Nome genérico demais:** 50 ou mais produtos com o mesmo nome normalizado (`CANDIDATE_LIMIT`). Não dá para garantir que não exista outro da mesma marca além do teto. | Nada | (não há caso no arquivo) |
 

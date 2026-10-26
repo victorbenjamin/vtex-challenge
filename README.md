@@ -67,6 +67,7 @@ O schema original não acomodava os dados: `SellerProductId` era `INTEGER`, mas 
 - [`006`](migrations/006_name_synonym.ts) cria a tabela `NameSynonym (Term, Replacement)` com as duas traduções do desafio. A operação pode incluir sinônimos sem nova migração.
 - [`007`](migrations/007_product_review.ts) cria a tabela `ProductReview`: produtos criados pela importação que podem duplicar um existente (mesmo nome, outra marca), com status `pending`, `merged` ou `distinct`.
 - [`008`](migrations/008_product_merged_into.ts) cria a coluna `Product.MergedIntoId`. Um produto mesclado continua no banco, apontando para o produto em que foi mesclado.
+- [`009`](migrations/009_similar_name_review.ts) cria o índice `Product (Brand COLLATE NOCASE)` e recria a `ProductReview` para aceitar o motivo `similarName`, preservando os dados.
 
 O schema resultante:
 
@@ -119,6 +120,9 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
    - **Limitação:** só cobre os termos cadastrados, e palavras com mais de uma tradução (`mesa` → `table` ou `desk`) exigem curadoria. Fuzzy, embeddings ou um LLM generalizariam, com os riscos discutidos no [estudo](docs/analysis/entity-resolution-study.md).
 4. ✅ **Nenhum produto da marca, por nenhum dos dois nomes: cria o produto** como o seller o descreveu, com o `NormalizedName`, e liga a oferta.
    - **Se o nome existe com outra marca,** o produto também é criado, e cada produto existente com o nome fica registrado em `ProductReview` como possível duplicata. O seller nunca é ligado a um produto talvez errado, e a duplicata não passa despercebida.
+   - **Se a mesma marca tem um produto de nome parecido** (erro de digitação como `Smarthpone`, ou outra ordem de palavras), também vira revisão (plano 015).
+     - **Como compara:** palavras ordenadas, similaridade de Levenshtein de pelo menos 0.85 e os mesmos números (`S23` e `S24` nunca são parecidos).
+     - **Os candidatos** são os produtos ativos da marca (até 200), por um índice. **A similaridade nunca liga uma oferta:** só aponta a possível duplicata.
    - **Um item ambíguo nunca cria produto:** se há vários candidatos da mesma marca, o produto existe.
    - **Se o SKU do seller já aponta para algum produto, nada é criado:** o resultado é `conflict`.
    - **O produto novo não ganha oferta do `Marketplace`.**
@@ -148,7 +152,7 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
 - leitura do arquivo em fluxo (NDJSON) em vez de um array JSON único;
 - paralelismo por seller;
 - Postgres no lugar do SQLite;
-- match aproximado **com proteções** (números iguais, marcas compatíveis, palavras de variante iguais, como Men/Women), antes de criar produto, com busca de candidatos em vez de comparar com o catálogo inteiro;
+- **busca de nomes parecidos sem depender da marca** (por trigramas, com o FTS5 do SQLite), para achar também a duplicata cuja marca foi escrita de outro jeito;
 - uma interface de revisão para as possíveis duplicatas, além do comando `catalog`.
 
 ## Arquitetura
@@ -200,7 +204,7 @@ output/          cópia de trabalho do banco (gerada, fora do git)
 
 ## Stack
 
-TypeScript (`strict`), Node 22, `better-sqlite3` (acesso ao banco), Knex (só para migrações), Vitest e Prettier. As escolhas e as alternativas consideradas estão no [plano 001](docs/plans/001-typescript-environment.md).
+TypeScript (`strict`), Node 22, `better-sqlite3` (acesso ao banco), Knex (só para migrações), `fastest-levenshtein` (similaridade de nomes), Vitest e Prettier. As escolhas e as alternativas consideradas estão no [plano 001](docs/plans/001-typescript-environment.md).
 
 ## Uso de IA
 

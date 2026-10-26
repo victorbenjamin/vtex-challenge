@@ -305,3 +305,37 @@ describe('CatalogDatabase merge support', () => {
     expect(catalog.listPendingReviews()).toEqual([]);
   });
 });
+
+describe('CatalogDatabase.findActiveProductsOfBrand', () => {
+  it('finds the products of a brand regardless of case, with their normalized names', () => {
+    const products = catalog.findActiveProductsOfBrand('canon', 200);
+
+    expect(products).toContainEqual({ id: 18, normalizedName: 'camera canon eos r6' });
+    expect(products.length).toBeGreaterThan(1);
+  });
+
+  it('finds the products without a brand for a missing brand', () => {
+    expect(catalog.findActiveProductsOfBrand(null, 200)).toContainEqual({
+      id: 113,
+      normalizedName: 'cable organizer kit',
+    });
+  });
+
+  it('leaves merged products out and respects the limit', () => {
+    catalog.markMerged(18, 2);
+
+    expect(catalog.findActiveProductsOfBrand('Canon', 200).map(({ id }) => id)).not.toContain(18);
+    expect(catalog.findActiveProductsOfBrand(null, 3)).toHaveLength(3);
+  });
+
+  it('is served by the brand index', () => {
+    const plan = db
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT Id AS id, NormalizedName AS normalizedName FROM Product
+         WHERE Brand = ? COLLATE NOCASE AND MergedIntoId IS NULL LIMIT ?`,
+      )
+      .all('x', 2) as { detail: string }[];
+
+    expect(plan.map(({ detail }) => detail).join()).toContain('IX_Product_Brand');
+  });
+});

@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "fastest-levenshtein": "^1.0.16",
     "knex": "^3.3.0"
   },
   "devDependencies": {

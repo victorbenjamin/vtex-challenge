@@ -168,6 +168,8 @@ Uma cascata, do mais barato e confiável para o mais caro e flexível:
 
 Em cada ligação, gravar o motivo do match e o score em `SellerProduct`, para que cada decisão seja auditável.
 
+**Como ficou na implementação** (planos 008 a 015): o passo 4 (fuzzy com proteções) **não liga ofertas**. Ele só marca para revisão um produto criado cujo nome é parecido com o de outro da mesma marca (plano 015). A ligação automática fica restrita ao nome normalizado (ou traduzido) com a marca normalizada. O motivo de cada item vai para o relatório da importação (plano 014), e não para `SellerProduct`.
+
 **Por que essa abordagem:**
 - O núcleo é determinístico e testável.
 - Cada decisão é explicável.

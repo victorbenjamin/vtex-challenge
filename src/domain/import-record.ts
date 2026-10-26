@@ -19,7 +19,7 @@ export type ItemOutcome =
 // - linked, alreadyLinked: matchedByName, matchedByTranslatedName
 // - conflict: skuPointsToAnotherProduct
 // - created: nameNotInCatalog
-// - createdForReview: nameExistsWithOtherBrand
+// - createdForReview: nameExistsWithOtherBrand, similarNameExists
 // - unmatched: ambiguous, tooManyCandidates
 // - rejected: what is invalid in the item, such as "Name must be non-empty text"
 // - failed: the error that stopped the import
@@ -89,16 +89,19 @@ export const ItemResult = {
     productId,
   }),
 
+  // A created product that may duplicate others: with the same name under another brand,
+  // or with a similar name. The same-name reason wins when both apply.
   createdForReview: (
     entry: SellerProductEntry,
     productId: number,
-    similarProductIds: readonly number[],
+    sameNameProductIds: readonly number[],
+    similarNameProductIds: readonly number[],
   ): ItemResult => ({
     entry,
     outcome: 'createdForReview',
-    reason: 'nameExistsWithOtherBrand',
+    reason: sameNameProductIds.length > 0 ? 'nameExistsWithOtherBrand' : 'similarNameExists',
     productId,
-    similarProductIds,
+    similarProductIds: [...sameNameProductIds, ...similarNameProductIds],
   }),
 };
 

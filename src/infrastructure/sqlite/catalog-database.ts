@@ -4,7 +4,7 @@ import type { Offer } from '../../domain/offer.ts';
 import type { SellerProductEntry } from '../../domain/seller-product-entry.ts';
 
 // Why a created product was recorded for review, and how a review ends (see migration 007).
-export type ProductReviewReason = 'sameNameOtherBrand';
+export type ProductReviewReason = 'sameNameOtherBrand' | 'similarName';
 export type ProductReviewResolution = 'merged' | 'distinct';
 
 export interface PendingReview {
@@ -61,6 +61,21 @@ export class CatalogDatabase {
         .prepare('INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)')
         .run(name, brand, category, normalizedName).lastInsertRowid,
     );
+  }
+
+  // Up to `limit` active (not merged) products of a brand, compared ignoring case, with
+  // their normalized names. A missing brand finds the products without a brand. Served by
+  // IX_Product_Brand.
+  findActiveProductsOfBrand(
+    brand: string | null,
+    limit: number,
+  ): { id: number; normalizedName: string }[] {
+    const sql = `SELECT Id AS id, NormalizedName AS normalizedName FROM Product
+      WHERE ${brand === null ? 'Brand IS NULL' : 'Brand = ? COLLATE NOCASE'}
+        AND MergedIntoId IS NULL
+      LIMIT ?`;
+    const parameters = brand === null ? [limit] : [brand, limit];
+    return this.db.prepare(sql).all(...parameters) as { id: number; normalizedName: string }[];
   }
 
   // The product the seller's SKU points to, if the seller already offers that SKU.

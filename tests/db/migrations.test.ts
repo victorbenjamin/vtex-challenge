@@ -66,6 +66,7 @@ describe('migrations', () => {
       '006_name_synonym.ts',
       '007_product_review.ts',
       '008_product_merged_into.ts',
+      '009_similar_name_review.ts',
     ]);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
@@ -168,11 +169,18 @@ describe('migrations', () => {
       '006_name_synonym.ts',
       '007_product_review.ts',
       '008_product_merged_into.ts',
+      '009_similar_name_review.ts',
     ]);
   });
 
   it('roll back the Product indexes and column one migration at a time', async () => {
     await latest();
+    expect(productIndexes()).toEqual([
+      'IX_Product_NormalizedName_Brand_Category',
+      'IX_Product_Brand',
+    ]);
+
+    await rollBackTo('008');
     expect(productIndexes()).toEqual(['IX_Product_NormalizedName_Brand_Category']);
 
     await rollBackTo('004');
@@ -503,5 +511,66 @@ describe('merged products (migration 008)', () => {
     await rollBackTo('007');
 
     expect(productColumnNames()).not.toContain('MergedIntoId');
+  });
+});
+
+describe('similar-name review (migration 009)', () => {
+  beforeEach(async () => {
+    await latest();
+  });
+
+  const insertReview = (db: Database.Database, reason: string) =>
+    db
+      .prepare('INSERT INTO ProductReview (ProductId, SimilarProductId, Reason) VALUES (1, 2, ?)')
+      .run(reason);
+
+  it('accepts the similar-name reason', () => {
+    withDatabase((db) => {
+      insertReview(db, 'similarName');
+      expect(db.prepare('SELECT Reason, Status FROM ProductReview').get()).toEqual({
+        Reason: 'similarName',
+        Status: 'pending',
+      });
+    });
+  });
+
+  it('keeps the constraints of the review table', () => {
+    withDatabase((db) => {
+      expect(() => insertReview(db, 'guess')).toThrow(/CHECK constraint failed/);
+      insertReview(db, 'similarName');
+      expect(() => insertReview(db, 'sameNameOtherBrand')).toThrow(/UNIQUE constraint failed/);
+      expect(() =>
+        db
+          .prepare(
+            "INSERT INTO ProductReview (ProductId, SimilarProductId, Reason) VALUES (1, 999999, 'similarName')",
+          )
+          .run(),
+      ).toThrow(/FOREIGN KEY constraint failed/);
+    });
+  });
+
+  it('keeps existing reviews when applied', async () => {
+    await rollBackTo('008');
+    withDatabase((db) => insertReview(db, 'sameNameOtherBrand'));
+
+    await latest();
+
+    withDatabase((db) => {
+      expect(db.prepare('SELECT Reason FROM ProductReview').pluck().all()).toEqual([
+        'sameNameOtherBrand',
+      ]);
+    });
+  });
+
+  it('rolls back, removing the reviews the previous schema cannot hold', async () => {
+    withDatabase((db) => insertReview(db, 'similarName'));
+
+    await rollBackTo('008');
+
+    withDatabase((db) => {
+      expect(db.prepare('SELECT COUNT(*) FROM ProductReview').pluck().get()).toBe(0);
+      expect(() => insertReview(db, 'similarName')).toThrow(/CHECK constraint failed/);
+    });
+    expect(productIndexes()).not.toContain('IX_Product_Brand');
   });
 });

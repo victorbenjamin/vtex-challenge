@@ -1,3 +1,4 @@
+import { areSimilarNames } from '../domain/name-similarity.ts';
 import type { NameSynonyms } from '../domain/name-synonyms.ts';
 import type { SellerProductEntry } from '../domain/seller-product-entry.ts';
 import type { CatalogDatabase } from '../infrastructure/sqlite/catalog-database.ts';
@@ -5,6 +6,10 @@ import type { CatalogDatabase } from '../infrastructure/sqlite/catalog-database.
 // Most normalized names belong to a single product. Reaching this many candidates means
 // the name is too generic to decide by brand alone.
 export const CANDIDATE_LIMIT = 50;
+
+// How many products of the entry's brand are compared for similar names. Similarity only
+// flags reviews, so a brand with more products is checked partially rather than in full.
+export const SIMILAR_CANDIDATE_LIMIT = 200;
 
 // The catalog product an entry refers to, if it can be told.
 // - found: the only product of the entry's name and brand;
@@ -42,6 +47,15 @@ export class ProductMatcher {
       kind: 'notFound',
       similarProductIds: [...byOwnName.similarProductIds, ...byTranslatedName.similarProductIds],
     };
+  }
+
+  // Active products of the entry's brand whose name is similar to the entry's: a typo or
+  // another word order. Only for review: similarity never links an offer.
+  similarNamesOf(entry: SellerProductEntry): number[] {
+    return this.catalog
+      .findActiveProductsOfBrand(entry.brand, SIMILAR_CANDIDATE_LIMIT)
+      .filter(({ normalizedName }) => areSimilarNames(entry.normalizedName, normalizedName))
+      .map(({ id }) => id);
   }
 
   private matchName(
