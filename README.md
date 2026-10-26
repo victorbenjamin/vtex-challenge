@@ -147,13 +147,13 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
   - Com os dados do desafio, uma versão em memória seria mais rápida. A escolha troca desempenho no caso pequeno por um desenho que se sustenta no caso grande.
 - **Detalhes:** [plano 004](docs/plans/004-import-exact-match.md) (primeira versão) e [plano 006](docs/plans/006-scalable-import.md) (desenho escalável).
 
-**Evolução prevista, não implementada:**
+**Evolução prevista, não implementada.** Todas as evoluções discutidas, com o motivo, o risco, os pré-requisitos e uma ordem sugerida, estão em [docs/analysis/evolution.md](docs/analysis/evolution.md). As principais:
 
-- leitura do arquivo em fluxo (NDJSON) em vez de um array JSON único;
-- paralelismo por seller;
-- Postgres no lugar do SQLite;
-- **busca de nomes parecidos sem depender da marca** (por trigramas, com o FTS5 do SQLite), para achar também a duplicata cuja marca foi escrita de outro jeito;
-- uma interface de revisão para as possíveis duplicatas, além do comando `catalog`.
+- **Merge reversível:** hoje as ofertas movidas por um merge não podem ser devolvidas. É o pré-requisito para uma LLM sugerir merges.
+- **Comandos para manter os sinônimos** (hoje só por SQL).
+- **LLM sugerindo merges e sinônimos,** sempre com aprovação humana: um merge errado é o erro caro.
+- **Busca de nomes parecidos sem depender da marca** (trigramas, com o FTS5 do SQLite).
+- **Escala:** transações por lote, leitura do arquivo em fluxo, Postgres com restrição única contra duplicatas concorrentes, paralelismo por seller.
 
 ## Arquitetura
 

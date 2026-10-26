@@ -229,3 +229,10 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **263 testes.** A importação do arquivo do desafio não mudou.
     - `README.md`, `CLAUDE.md`, `import-decision-flow.md` e o estudo (§5, como ficou na implementação) foram atualizados.
 58. **Commit e push** da revisão de nomes parecidos (plano 015), da migração 009 e da documentação.
+59. **Documento de evoluções possíveis:** `docs/analysis/evolution.md`, com todas as evoluções discutidas e não implementadas.
+    - **Agrupadas em:** escala e infraestrutura, matching, itens pendentes, revisão e merge, sinônimos, catálogo e modelo de dados.
+    - Cada uma traz o motivo, o custo ou risco, o pré-requisito, a origem e a prioridade. O documento termina com uma ordem sugerida.
+    - **Destaques:** o merge reversível (hoje não é, e é pré-requisito para uma LLM sugerir merges), os comandos de sinônimos, e a LLM só sugerindo, com aprovação humana.
+    - Fica registrado também o que foi descartado de propósito: o fuzzy ligando ofertas automaticamente.
+    - A lista de evolução do README passou a resumir e apontar para o documento, que também entrou no mapa do `CLAUDE.md`.
+60. **Commit e push** do documento de evoluções possíveis.
