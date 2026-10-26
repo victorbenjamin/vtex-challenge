@@ -75,6 +75,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - **Se a normalização mudar,** crie uma nova migração que recalcule a coluna. Nunca edite a 004.
   - **Todo produto criado** pela importação precisa gravar o `NormalizedName`.
 - **Após a migração 006:** tabela `NameSynonym (Term, Replacement)`, com `roteador → router` e `processador → processor`.
+- **Após a migração 007:** tabela `ProductReview (ProductId, SimilarProductId, Reason, Status)`, com as possíveis duplicatas criadas pela importação. O status é `pending`, `merged` ou `distinct`; o merge é o plano 012.
   - Os sinônimos valem **num sentido só e só no nome do item**. O catálogo e o `NormalizedName` não mudam, então incluir um sinônimo não exige migração.
 - **Regra de match (planos 009 e 010):**
   - nome normalizado (`normalizeProductName`) e marca normalizada (`normalizeBrand`, com nulo só igual a nulo);
@@ -82,6 +83,8 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - a marca é filtrada no domínio (`SellerProductEntry.hasBrand`), sobre os candidatos de `findProductsByNormalizedName`, com teto `CANDIDATE_LIMIT`;
   - só um candidato casa;
   - **cascata:** primeiro o nome do próprio item; só se não houver nenhum candidato da marca, o nome traduzido (`NameSynonyms.translate`). Se o nome do item for ambíguo, a tradução não é tentada.
+  - **sem produto da marca por nenhum dos dois nomes (plano 011):** cria o produto, com o `NormalizedName`. Resultado `created` se o nome é inédito, `createdForReview` se ele existe com outra marca, com uma linha em `ProductReview` por produto parecido. Não cria se o SKU já aponta para algum produto (`conflict`), nem se o item é ambíguo (`unmatched`).
+  - **princípio:** ligar ao produto errado é o erro caro; uma duplicata é recuperável por merge.
 - **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.
@@ -91,6 +94,6 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 ## Decisões pendentes
 
-- **Relatório detalhado da importação** (adiado pelo usuário: "baby steps"). Hoje há só `ImportSummary`, com contagens no log. Ele volta quando todas as regras da cascata estiverem implementadas e deve listar, item a item, os pendentes, os conflitos e os rejeitados com o motivo, para que nada se perca em silêncio (plano 004, decisões 1 e 6).
+- **Relatório detalhado da importação** (adiado pelo usuário: "baby steps"). Hoje há só `ImportSummary`, com contagens no log. As regras da cascata já estão implementadas; ele deve listar, item a item, os pendentes, os conflitos e os rejeitados com o motivo, para que nada se perca em silêncio (plano 004, decisões 1 e 6).
 
 Ao decidir, mova o item para o plano ou o changelog correspondente.

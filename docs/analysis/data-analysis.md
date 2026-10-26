@@ -239,6 +239,7 @@ Depois do matching:
 | 2: + nome normalizado (plano 008) | 263 | 1 (#76, depois da #55) | 5 (#57, #64, #87, #180, #188) | 1.238 |
 | 3: + marca normalizada, sem categoria (plano 009) | 265 | 1 | 3 (#57, #64, #180) | 1.240 |
 | 4: + sinônimos (plano 010) | 267 | 1 | 1 (#180) | 1.242 |
+| 5: + criar produto, com revisão (plano 011) | 267, mais 1 `created` (#180) | 1 | 0 | 1.243, com 976 produtos e 0 revisões |
 
 **Resultado final esperado,** com todas as regras:
 

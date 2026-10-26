@@ -54,6 +54,7 @@ Conferido nos dados:
 
 ## Desvios
 
+- **A decisão 1 (itens sem match não criam produto) foi substituída no plano 011,** quando todas as regras de match já existiam: um item sem produto da mesma marca cria um produto, marcado para revisão se o nome existir com outra marca.
 - **A decisão 5 (rejeitar o nome do marketplace) foi revogada (changelog, entrada 43):** o arquivo pode trazer itens do `Marketplace`, sem tratamento especial.
 - **As decisões 3 (índice em memória) e 7 (transação única) foram revistas no plano 006**, em favor de consultas indexadas e transações por lote, pensando em volume.
 - **A estrutura em `src/import/` foi substituída pelo plano 005** (camadas e modelo de domínio rico). As regras e o comportamento foram mantidos.

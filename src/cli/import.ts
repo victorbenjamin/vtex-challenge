@@ -28,6 +28,8 @@ console.log(`Imported ${file}`);
 console.log(`  linked:         ${counts.linked}`);
 console.log(`  already linked: ${counts.alreadyLinked}`);
 console.log(`  conflicts:      ${counts.conflict}`);
+console.log(`  created:        ${counts.created}`);
+console.log(`  to review:      ${counts.createdForReview}`);
 console.log(`  unmatched:      ${counts.unmatched}`);
 console.log(`  rejected:       ${counts.rejected}`);
 

@@ -1,5 +1,14 @@
 // What can happen to an item of an import file.
-export type ItemOutcome = 'linked' | 'alreadyLinked' | 'conflict' | 'unmatched' | 'rejected';
+// `createdForReview` is a new product whose name exists in the catalog under another brand:
+// it may duplicate an existing product, so it is recorded for review.
+export type ItemOutcome =
+  | 'linked'
+  | 'alreadyLinked'
+  | 'conflict'
+  | 'created'
+  | 'createdForReview'
+  | 'unmatched'
+  | 'rejected';
 
 // How many items of an import file ended in each outcome, and where the import stopped if
 // an item could not be committed. Temporary: a detailed report comes back once all
@@ -9,6 +18,8 @@ export class ImportSummary {
     linked: 0,
     alreadyLinked: 0,
     conflict: 0,
+    created: 0,
+    createdForReview: 0,
     unmatched: 0,
     rejected: 0,
   };

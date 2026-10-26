@@ -15,11 +15,11 @@ import {
   type MigratedDatabase,
 } from '../helpers/working-database.ts';
 
-// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, for the fourth
-// import increment: the first four rows of §3.1 (exact names, names that differ only in
-// spelling, brand or category variants, and Portuguese translations). Item #55 "Câmera"
-// and #76 "Camera" share seller and Id, so #76 is already linked. Only #180, the SQL
-// injection test product, is left: it has no product in the catalog.
+// Expected results come from docs/analysis/data-analysis.md §3.1 and §5, with every row
+// of §3.1 resolved: exact names, names that differ only in spelling, brand or category
+// variants and Portuguese translations are linked; #180, the SQL injection test product,
+// has no product of its name in the catalog and is created. Item #55 "Câmera" and #76
+// "Camera" share seller and Id, so #76 is already linked.
 
 const FILE = 'data/ProductEntry.json';
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -40,15 +40,40 @@ afterAll(() => {
   migrated.cleanup();
 });
 
-describe(`importing ${FILE} (spelling, brand, category and translation variants)`, () => {
-  it('links 267 items and leaves 1 pending', () => {
+describe(`importing ${FILE}`, () => {
+  it('links 267 items, creates 1 product and leaves nothing pending', () => {
     expect(summary.counts()).toEqual({
       linked: 267,
       alreadyLinked: 1,
       conflict: 0,
-      unmatched: 1,
+      created: 1,
+      createdForReview: 0,
+      unmatched: 0,
       rejected: 0,
     });
+  });
+
+  it('creates #180 Security Test Product with its brand stored literally', () => {
+    expect(
+      db
+        .prepare(
+          `SELECT p.Name, p.Brand, p.Category, p.NormalizedName
+           FROM SellerProduct sp
+           JOIN Seller s ON s.Id = sp.SellerId
+           JOIN Product p ON p.Id = sp.ProductId
+           WHERE s.Name = 'MegaStore' AND sp.SellerProductId = '09835342345-4678-9abc-def012345678'`,
+        )
+        .get(),
+    ).toEqual({
+      Name: 'Security Test Product',
+      Brand: "TestBrand'; SELECT 1; --",
+      Category: 'Electronics',
+      NormalizedName: 'security test product',
+    });
+  });
+
+  it('records no product for review', () => {
+    expect(db.prepare('SELECT COUNT(*) FROM ProductReview').pluck().get()).toBe(0);
   });
 
   it.each([
@@ -129,8 +154,8 @@ describe(`importing ${FILE} (spelling, brand, category and translation variants)
     ).toBe(20);
   });
 
-  it('stores 1,242 offers: 975 from the marketplace plus 267 imported', () => {
-    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1242);
+  it('stores 1,243 offers: 975 from the marketplace plus 268 imported', () => {
+    expect(db.prepare('SELECT COUNT(*) FROM SellerProduct').pluck().get()).toBe(1243);
   });
 
   it('links every imported offer to a product with the same normalized (or translated) name and brand', () => {
@@ -150,7 +175,7 @@ describe(`importing ${FILE} (spelling, brand, category and translation variants)
       .all(MARKETPLACE_SELLER_NAME) as Record<string, string | null>[];
 
     const synonyms = new CatalogDatabase(db).loadNameSynonyms();
-    expect(offers).toHaveLength(267);
+    expect(offers).toHaveLength(268);
     for (const offer of offers) {
       const item = itemBySellerSku.get(`${offer['sellerName']}|${offer['sku']}`);
       const itemName = normalizeProductName(item?.['Name'] ?? '');
@@ -168,11 +193,16 @@ describe(`importing ${FILE} (spelling, brand, category and translation variants)
   it('is idempotent', () => {
     const second = sqliteImportCatalog(db).execute(readImportFile(FILE));
 
-    expect(second.counts()).toMatchObject({ linked: 0, alreadyLinked: 268, unmatched: 1 });
+    expect(second.counts()).toMatchObject({
+      linked: 0,
+      alreadyLinked: 269,
+      created: 0,
+      unmatched: 0,
+    });
   });
 
-  it('does not create products', () => {
-    expect(db.prepare('SELECT COUNT(*) FROM Product').pluck().get()).toBe(975);
+  it('ends with 976 products: the 975 of the catalog plus the one created', () => {
+    expect(db.prepare('SELECT COUNT(*) FROM Product').pluck().get()).toBe(976);
   });
 
   it('leaves the original database untouched', () => {

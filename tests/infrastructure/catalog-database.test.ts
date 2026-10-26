@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Offer } from '../../src/domain/offer.ts';
 import { normalizeProductName } from '../../src/domain/product-name.ts';
+import { SellerProductEntry } from '../../src/domain/seller-product-entry.ts';
 import { CatalogDatabase } from '../../src/infrastructure/sqlite/catalog-database.ts';
 import { createMigratedDatabase, type MigratedDatabase } from '../helpers/working-database.ts';
 
@@ -171,5 +172,81 @@ describe('CatalogDatabase.loadNameSynonyms', () => {
     expect(catalog.loadNameSynonyms().translate('teclado mecanico rgb')).toBe(
       'keyboard mecanico rgb',
     );
+  });
+});
+
+describe('CatalogDatabase.createProduct', () => {
+  const entry = (raw: object) => {
+    const parsed = SellerProductEntry.parse({ Id: 'sku', SellerName: 'MegaStore', ...raw });
+    if (!parsed) {
+      throw new Error('invalid test entry');
+    }
+    return parsed;
+  };
+
+  it('stores the product as the seller described it, with its normalized name', () => {
+    const id = catalog.createProduct(
+      entry({ Name: 'Câmera  Instantânea', Brand: 'Fujifilm', Category: 'Photo' }),
+    );
+
+    expect(db.prepare('SELECT * FROM Product WHERE Id = ?').get(id)).toEqual({
+      Id: id,
+      Name: 'Câmera  Instantânea',
+      Brand: 'Fujifilm',
+      Category: 'Photo',
+      NormalizedName: 'camera instantanea',
+    });
+  });
+
+  it('makes the product findable by its normalized name', () => {
+    const id = catalog.createProduct(entry({ Name: 'Hoverboard X1', Brand: null, Category: null }));
+
+    expect(catalog.findProductsByNormalizedName('hoverboard x1', 50)).toEqual([
+      { id, brand: null },
+    ]);
+  });
+
+  it('stores seller-provided text literally', () => {
+    const id = catalog.createProduct(
+      entry({ Name: 'Security Test Product', Brand: "TestBrand'; SELECT 1; --", Category: null }),
+    );
+
+    expect(db.prepare('SELECT Brand FROM Product WHERE Id = ?').pluck().get(id)).toBe(
+      "TestBrand'; SELECT 1; --",
+    );
+  });
+});
+
+describe('CatalogDatabase.findOfferProductId', () => {
+  it('returns the product the seller SKU points to, or undefined', () => {
+    const sellerId = catalog.findOrCreateSeller('MegaStore');
+    catalog.addOfferIfAbsent(new Offer(sellerId, 'sku-1', 2));
+
+    expect(catalog.findOfferProductId(sellerId, 'sku-1')).toBe(2);
+    expect(catalog.findOfferProductId(sellerId, 'sku-2')).toBeUndefined();
+  });
+});
+
+describe('CatalogDatabase.addProductReviews', () => {
+  const reviews = () =>
+    db
+      .prepare('SELECT ProductId, SimilarProductId, Reason, Status FROM ProductReview ORDER BY Id')
+      .raw()
+      .all();
+
+  it('records one pending review per similar product', () => {
+    catalog.addProductReviews(3, [1, 2], 'sameNameOtherBrand');
+
+    expect(reviews()).toEqual([
+      [3, 1, 'sameNameOtherBrand', 'pending'],
+      [3, 2, 'sameNameOtherBrand', 'pending'],
+    ]);
+  });
+
+  it('ignores a pair that is already recorded', () => {
+    catalog.addProductReviews(3, [1], 'sameNameOtherBrand');
+    catalog.addProductReviews(3, [1], 'sameNameOtherBrand');
+
+    expect(reviews()).toHaveLength(1);
   });
 });

@@ -64,6 +64,7 @@ describe('migrations', () => {
       '004_product_normalized_name.ts',
       '005_drop_product_exact_match_index.ts',
       '006_name_synonym.ts',
+      '007_product_review.ts',
     ]);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
@@ -164,6 +165,7 @@ describe('migrations', () => {
       '004_product_normalized_name.ts',
       '005_drop_product_exact_match_index.ts',
       '006_name_synonym.ts',
+      '007_product_review.ts',
     ]);
   });
 
@@ -408,6 +410,65 @@ describe('name synonyms (migration 006)', () => {
           .prepare('INSERT INTO NameSynonym (Term, Replacement) VALUES (?, ?)')
           .run('ROTEADOR', 'router'),
       ).toThrow(/UNIQUE constraint failed/);
+    });
+  });
+});
+
+describe('product review (migration 007)', () => {
+  beforeEach(async () => {
+    await latest();
+  });
+
+  const insertReview = (db: Database.Database, productId: number, similarProductId: number) =>
+    db
+      .prepare('INSERT INTO ProductReview (ProductId, SimilarProductId, Reason) VALUES (?, ?, ?)')
+      .run(productId, similarProductId, 'sameNameOtherBrand');
+
+  it('starts empty, with pending status and creation time by default', () => {
+    withDatabase((db) => {
+      expect(db.prepare('SELECT COUNT(*) FROM ProductReview').pluck().get()).toBe(0);
+      insertReview(db, 1, 2);
+      expect(db.prepare('SELECT Status, CreatedAt FROM ProductReview').get()).toMatchObject({
+        Status: 'pending',
+        CreatedAt: expect.any(String),
+      });
+    });
+  });
+
+  it.each([
+    [
+      'an unknown reason',
+      "INSERT INTO ProductReview (ProductId, SimilarProductId, Reason) VALUES (1, 2, 'guess')",
+    ],
+    [
+      'an unknown status',
+      "INSERT INTO ProductReview (ProductId, SimilarProductId, Reason, Status) VALUES (1, 2, 'sameNameOtherBrand', 'done')",
+    ],
+    [
+      'a product reviewed against itself',
+      "INSERT INTO ProductReview (ProductId, SimilarProductId, Reason) VALUES (1, 1, 'sameNameOtherBrand')",
+    ],
+  ])('refuses %s', (_, sql) => {
+    withDatabase((db) => {
+      expect(() => db.exec(sql)).toThrow(/CHECK constraint failed/);
+    });
+  });
+
+  it('refuses the same pair twice and unknown products', () => {
+    withDatabase((db) => {
+      insertReview(db, 1, 2);
+      expect(() => insertReview(db, 1, 2)).toThrow(/UNIQUE constraint failed/);
+      expect(() => insertReview(db, 1, 999_999)).toThrow(/FOREIGN KEY constraint failed/);
+    });
+  });
+
+  it('rolls back', async () => {
+    await rollBackTo('006');
+
+    withDatabase((db) => {
+      expect(
+        db.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name = 'ProductReview'").pluck().get(),
+      ).toBe(0);
     });
   });
 });

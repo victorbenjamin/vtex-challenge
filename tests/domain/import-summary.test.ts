@@ -9,6 +9,8 @@ describe('ImportSummary', () => {
       linked: 0,
       alreadyLinked: 0,
       conflict: 0,
+      created: 0,
+      createdForReview: 0,
       unmatched: 0,
       rejected: 0,
     });

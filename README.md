@@ -5,13 +5,15 @@ Sistema que consolida produtos enviados por vários sellers no catálogo de um m
 - **Entrada:** `data/ProductEntry.json`, com 269 itens de 20 sellers.
 - **Catálogo:** `data/catalog.db` (SQLite), com 975 produtos.
 
-> **Status:** a importação está em construção, por incrementos.
+> **Status:** a importação resolve todos os itens do arquivo do desafio. Foi construída por incrementos:
 >
 > - **Incremento 1 (match exato):** pronto. Liga os 200 itens iguais em nome, marca e categoria.
 > - **Incremento 2 (nome normalizado):** pronto. Liga mais 64 itens cujo nome só difere em espaços, acentos, caixa ou aspas de polegada. O match exato virou um caso particular dele. No arquivo do desafio, o resultado é 263 ligados e 1 já ligado (um reenvio).
 > - **Incremento 3 (marca e categoria):** pronto. A marca é comparada sem caixa, espaços e pontuação (`Levi's` = `Levis`), e a categoria deixa de ser comparada (`Photo` e `Photography`). Liga mais 2 itens: 265 ligados e 1 já ligado.
 > - **Incremento 4 (traduções):** pronto. Uma tabela de sinônimos traduz palavras do seller para o vocabulário do catálogo (`roteador` → `router`). Liga mais 2 itens: 267 ligados e 1 já ligado.
-> - Só 1 item fica **pendente**: o item de teste de SQL injection, que não tem produto no catálogo e depende da etapa "criar produto".
+> - **Incremento 5 (criar produto):** pronto. Um item sem produto da mesma marca no catálogo vira um produto novo. Se o nome já existe com outra marca, o produto também é criado, mas fica registrado como possível duplicata, para revisão e merge posterior. No arquivo, cria o #180, o item de teste de SQL injection, com a marca gravada literalmente.
+> - **Resultado final:** 267 ligados, 1 já ligado, 1 criado e nenhum pendente; 976 produtos e 1.243 ofertas.
+> - O caminho de um item e todos os resultados possíveis estão em [docs/analysis/import-decision-flow.md](docs/analysis/import-decision-flow.md).
 > - Por enquanto, a importação registra só as **contagens** de cada resultado no log. O relatório detalhado item a item volta quando todas as regras estiverem implementadas.
 >
 > O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
@@ -60,6 +62,7 @@ O schema original não acomodava os dados: `SellerProductId` era `INTEGER`, mas 
   - A migração tem uma **cópia congelada** da normalização, para sempre gravar os mesmos valores, e um teste garante que ela coincide com a do domínio.
 - [`005`](migrations/005_drop_product_exact_match_index.ts) remove o índice da 003. Todo match exato também é um match normalizado, então a importação busca só pelo nome normalizado, e um índice sem uso ainda custaria em toda escrita.
 - [`006`](migrations/006_name_synonym.ts) cria a tabela `NameSynonym (Term, Replacement)` com as duas traduções do desafio. A operação pode incluir sinônimos sem nova migração.
+- [`007`](migrations/007_product_review.ts) cria a tabela `ProductReview`: produtos criados pela importação que podem duplicar um existente (mesmo nome, outra marca), com status `pending`, `merged` ou `distinct`.
 
 O schema resultante:
 
@@ -108,15 +111,22 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
    - **Num sentido só e só no item:** o catálogo e o `NormalizedName` não mudam, então um sinônimo novo vale na próxima importação, sem migração.
    - **Por que é uma cascata:** o nome traduzido é outro nome e pode apontar para outro produto. Se o catálogo tiver `Processador X` e `Processor X`, o item `Processador X` liga ao primeiro.
    - **Limitação:** só cobre os termos cadastrados, e palavras com mais de uma tradução (`mesa` → `table` ou `desk`) exigem curadoria. Fuzzy, embeddings ou um LLM generalizariam, com os riscos discutidos no [estudo](docs/analysis/entity-resolution-study.md).
-4. ⏳ Match aproximado **com proteções**: números iguais, marcas compatíveis e palavras de variante iguais (Men/Women, Shirt/Shorts).
-5. ⏳ Sem match confiável: criar o produto.
+4. ✅ **Nenhum produto da marca, por nenhum dos dois nomes: cria o produto** como o seller o descreveu, com o `NormalizedName`, e liga a oferta.
+   - **Se o nome existe com outra marca,** o produto também é criado, e cada produto existente com o nome fica registrado em `ProductReview` como possível duplicata. O seller nunca é ligado a um produto talvez errado, e a duplicata não passa despercebida.
+   - **Um item ambíguo nunca cria produto:** se há vários candidatos da mesma marca, o produto existe.
+   - **Se o SKU do seller já aponta para algum produto, nada é criado:** o resultado é `conflict`.
+   - **O produto novo não ganha oferta do `Marketplace`.**
+   - **O merge** das duplicatas confirmadas é o próximo passo (plano 012).
 
 **Garantias atuais:**
 
 - **Uma transação curta por item.** Uma falha técnica desfaz só o item em curso, interrompe a importação e aparece no log, com o índice do item. Os itens anteriores continuam gravados. _Simplificação temporária:_ transações por lote diluem o custo de confirmação em volumes grandes e podem voltar só no caso de uso, sem mudar o domínio.
 - **Reimportar não muda nada, e completa uma importação interrompida:** as ofertas já existentes são contadas como `alreadyLinked`.
 - **Segura com importações concorrentes:** o banco arbitra. Seller e oferta são gravados com "insere se não existir", e quem perde a corrida reavalia contra o que já está gravado, sem erro e sem sobrescrever.
-- **Precisão em primeiro lugar:** um SKU que já aponta para outro produto vira `conflict` e não é sobrescrito. Itens sem match ficam `unmatched` e não são gravados, porque criar produtos para eles duplicaria os 68 que existem com outra grafia.
+- **Precisão em primeiro lugar:** um SKU que já aponta para outro produto vira `conflict` e não é sobrescrito. Um item ambíguo fica `unmatched`: nem liga, nem cria. Na dúvida sobre a marca, cria-se um produto marcado para revisão, em vez de arriscar o produto errado.
+- **Limitação de concorrência na criação:** duas importações criando o mesmo produto novo ao mesmo tempo podem gravá-lo duas vezes.
+  - No SQLite, a segunda gravação falha e uma nova execução corrige.
+  - Num Postgres, seria preciso uma restrição única sobre o nome e a marca normalizados ([plano 011](docs/plans/011-create-product-with-review.md)).
 - **Desenho para volume:**
   - nada é carregado inteiro: nem o catálogo, nem as ofertas de um seller;
   - cada item faz consultas por chave ou por índice.
@@ -128,7 +138,8 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
 - leitura do arquivo em fluxo (NDJSON) em vez de um array JSON único;
 - paralelismo por seller;
 - Postgres no lugar do SQLite;
-- busca de candidatos para o matching aproximado, em vez de comparar com o catálogo inteiro.
+- match aproximado **com proteções** (números iguais, marcas compatíveis, palavras de variante iguais, como Men/Women), antes de criar produto, com busca de candidatos em vez de comparar com o catálogo inteiro;
+- o comando de merge de duplicatas (plano 012) e a revisão das marcadas em `ProductReview`.
 
 ## Arquitetura
 

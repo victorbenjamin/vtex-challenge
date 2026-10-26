@@ -168,3 +168,16 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - Atualizados: `import-decision-flow.md` (desenho e tabela), `README.md`, `CLAUDE.md` e as notas dos planos 003 e 004.
     - **Antes disso,** uma implementação de "criar produto" feita por um mal-entendido foi desfeita a pedido do usuário, sem chegar a ser commitada.
 44. **Commit e push** da aceitação de itens do `Marketplace` no arquivo de importação.
+45. **Plano 011 proposto: criar produto, com revisão de possíveis duplicatas.** Proposta do usuário: o risco que importa é ligar ao produto errado, não duplicar. Um item sem produto da mesma marca vira produto novo (`created`). Se o nome já existe com outra marca, o produto também é criado, mas fica registrado em `ProductReview` (migração 007) para revisão e merge posterior (`createdForReview`). Um item ambíguo continua sem criar. O merge fica para o plano 012. Gabarito: 267 ligados, 1 criado, 1 já ligado, 0 pendentes.
+46. **Importação, incremento 5 (criar produto, com revisão de possíveis duplicatas).** Plano em `docs/plans/011-create-product-with-review.md`.
+    - **Migração 007:** tabela `ProductReview (ProductId, SimilarProductId, Reason, Status, CreatedAt)`, com `CHECK`s, `UNIQUE (ProductId, SimilarProductId)` e chaves estrangeiras.
+    - **Cria o produto** quando nenhum produto da mesma marca é encontrado, pelo nome do item ou pelo traduzido:
+      - `created`, se o nome é inédito;
+      - `createdForReview`, se o nome existe com outra marca, com uma revisão `pending` por produto parecido.
+    - **Não cria** se o SKU já aponta para algum produto (`conflict`), nem se o item é ambíguo (`unmatched`).
+    - **O produto novo** tem o `NormalizedName` e não ganha oferta do `Marketplace`.
+    - `CatalogDatabase.createProduct`, `findOfferProductId` e `addProductReviews`. `ImportCatalog` usa o tipo interno `Lookup`. `created` e `createdForReview` foram incluídos no `ImportSummary` e no log.
+    - **Resultado final:** 267 ligados, 1 já ligado, 1 criado (#180) e 0 pendentes; 976 produtos, 1.243 ofertas e 0 revisões. 170 testes.
+    - **Corrigido** o teste de ambiguidade que, desde o plano 008, inseria produtos sem `NormalizedName` e passava por acaso.
+    - Documentação: `import-decision-flow.md` reescrito; `README.md`, `CLAUDE.md`, `data-analysis §5` e o plano 004 atualizados.
+47. **Commit e push** do incremento 5 (criar produto, com revisão), da migração 007 e da documentação.

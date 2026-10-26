@@ -35,7 +35,22 @@ const offersOf = (sellerName: string) =>
        WHERE s.Name = ? ORDER BY sp.SellerProductId`,
     )
     .raw()
-    .all(sellerName);
+    .all(sellerName) as [string, number][];
+
+const productCount = () => db.prepare('SELECT COUNT(*) FROM Product').pluck().get();
+
+// Pending reviews as [created product name and brand, similar product id].
+const pendingReviews = () =>
+  db
+    .prepare(
+      `SELECT p.Name || ' / ' || coalesce(p.Brand, '-'), r.SimilarProductId
+       FROM ProductReview r JOIN Product p ON p.Id = r.ProductId
+       WHERE r.Status = 'pending' ORDER BY r.Id`,
+    )
+    .raw()
+    .all();
+
+const hoverboard = { Name: 'Hoverboard X1', Brand: 'Segway', Category: 'Toys' };
 
 const externalSellers = () =>
   db
@@ -51,12 +66,97 @@ describe('ImportCatalog', () => {
     expect(offersOf('MegaStore')).toEqual([['sku-1', 2]]);
   });
 
-  it('counts entries that no rule matches and writes nothing for them', () => {
-    // A brand variant is not covered by name normalization.
-    expect(
-      countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Brand: 'Samsung Electronics' }]),
-    ).toMatchObject({ linked: 0, unmatched: 1 });
-    expect(externalSellers()).toEqual([]);
+  describe('creating products', () => {
+    it('creates a product when no catalog product has the name', () => {
+      expect(countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...hoverboard }])).toMatchObject({
+        created: 1,
+        createdForReview: 0,
+      });
+      const product = db
+        .prepare('SELECT * FROM Product WHERE Id = (SELECT MAX(Id) FROM Product)')
+        .get() as Record<string, unknown>;
+      expect(product).toMatchObject({ ...hoverboard, NormalizedName: 'hoverboard x1' });
+      expect(offersOf('MegaStore')).toEqual([['sku-1', product['Id']]]);
+      expect(pendingReviews()).toEqual([]);
+    });
+
+    it('does not offer a created product as the marketplace', () => {
+      run([{ Id: 'sku-1', SellerName: 'MegaStore', ...hoverboard }]);
+
+      expect(offersOf(MARKETPLACE_SELLER_NAME)).toHaveLength(975);
+    });
+
+    it('creates the product once when several sellers send it in the same file', () => {
+      expect(
+        countsOf([
+          { Id: 'sku-1', SellerName: 'MegaStore', ...hoverboard },
+          { Id: 'sku-9', SellerName: 'TechWorld', ...hoverboard, Name: 'HOVERBOARD  X1' },
+        ]),
+      ).toMatchObject({ created: 1, linked: 1 });
+      expect(offersOf('TechWorld')[0]?.[1]).toBe(offersOf('MegaStore')[0]?.[1]);
+      expect(productCount()).toBe(976);
+    });
+
+    it('is idempotent', () => {
+      const items = [{ Id: 'sku-1', SellerName: 'MegaStore', ...hoverboard }];
+      run(items);
+
+      expect(countsOf(items)).toMatchObject({ created: 0, alreadyLinked: 1 });
+      expect(productCount()).toBe(976);
+    });
+
+    it('creates nothing when the seller SKU already points to a product', () => {
+      run([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy }]);
+
+      expect(countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...hoverboard }])).toMatchObject({
+        conflict: 1,
+        created: 0,
+      });
+      expect(productCount()).toBe(975);
+      expect(offersOf('MegaStore')).toEqual([['sku-1', 2]]);
+    });
+
+    it('creates a product for review when the name exists only with another brand', () => {
+      // "Samsung Electronics" may be "Samsung" spelled another way: the seller gets its own
+      // product, never a possibly wrong one, and the possible duplicate of #2 is recorded.
+      expect(
+        countsOf([
+          { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Brand: 'Samsung Electronics' },
+        ]),
+      ).toMatchObject({ linked: 0, created: 0, createdForReview: 1 });
+      expect(offersOf('MegaStore')[0]?.[1]).not.toBe(2);
+      expect(pendingReviews()).toEqual([['Smartphone Galaxy S23 / Samsung Electronics', 2]]);
+    });
+
+    it('records every existing product of the name for review', () => {
+      const insert = db.prepare(
+        'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+      );
+      const gaiam = Number(
+        insert.run('Yoga Mat Pro', 'Gaiam', 'Fitness', 'yoga mat pro').lastInsertRowid,
+      );
+      const manduka = Number(
+        insert.run('Yoga Mat Pro', 'Manduka', 'Fitness', 'yoga mat pro').lastInsertRowid,
+      );
+
+      run([
+        {
+          Id: 'sku-1',
+          SellerName: 'MegaStore',
+          Name: 'Yoga Mat Pro',
+          Brand: 'Liforme',
+          Category: 'Fitness',
+        },
+      ]);
+
+      expect(pendingReviews()).toEqual(
+        expect.arrayContaining([
+          ['Yoga Mat Pro / Liforme', gaiam],
+          ['Yoga Mat Pro / Liforme', manduka],
+        ]),
+      );
+      expect(pendingReviews()).toHaveLength(2);
+    });
   });
 
   it('creates each seller once, ignoring case and surrounding spaces', () => {
@@ -167,10 +267,12 @@ describe('ImportCatalog', () => {
     ).toMatchObject({ linked: 0, unmatched: 1 });
   });
 
-  it('never links attributes shared by more than one catalog product', () => {
-    const insert = db.prepare('INSERT INTO Product (Name, Brand, Category) VALUES (?, ?, ?)');
-    insert.run('Yoga Mat Duplicate', 'Gaiam', 'Fitness');
-    insert.run('Yoga Mat Duplicate', 'Gaiam', 'Fitness');
+  it('never links, nor creates, attributes shared by more than one catalog product', () => {
+    const insert = db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    );
+    insert.run('Yoga Mat Duplicate', 'Gaiam', 'Fitness', 'yoga mat duplicate');
+    insert.run('Yoga Mat Duplicate', 'Gaiam', 'Fitness', 'yoga mat duplicate');
 
     expect(
       countsOf([
@@ -182,7 +284,7 @@ describe('ImportCatalog', () => {
           Category: 'Fitness',
         },
       ]),
-    ).toMatchObject({ linked: 0, unmatched: 1 });
+    ).toMatchObject({ linked: 0, created: 0, createdForReview: 0, unmatched: 1 });
   });
 
   it('links a brand spelled differently', () => {
@@ -208,10 +310,11 @@ describe('ImportCatalog', () => {
     expect(offersOf('MegaStore')).toEqual([['sku-1', 2]]);
   });
 
-  it('does not link a missing brand to a product that has one', () => {
+  it('does not link a missing brand to a product that has one: creates one for review', () => {
     expect(
       countsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy, Brand: null }]),
-    ).toMatchObject({ linked: 0, unmatched: 1 });
+    ).toMatchObject({ linked: 0, createdForReview: 1 });
+    expect(pendingReviews()).toEqual([['Smartphone Galaxy S23 / -', 2]]);
   });
 
   describe('with several catalog products of the same name', () => {
@@ -296,14 +399,15 @@ describe('ImportCatalog', () => {
       expect(countsOf([roteador])).toMatchObject({ linked: 0, unmatched: 1 });
     });
 
-    it('still requires the brand after translating', () => {
+    it('still requires the brand after translating, and reviews against the translated name', () => {
       expect(countsOf([{ ...roteador, Brand: 'Netgear' }])).toMatchObject({
         linked: 0,
-        unmatched: 1,
+        createdForReview: 1,
       });
+      expect(pendingReviews()).toEqual([['Roteador WiFi 6 TP-Link / Netgear', 21]]);
     });
 
-    it('uses a synonym added to the table on the next import', () => {
+    it('uses a synonym added to the table, with no migration', () => {
       const teclado = {
         Id: 'sku-2',
         SellerName: 'MegaStore',
@@ -311,8 +415,6 @@ describe('ImportCatalog', () => {
         Brand: 'Corsair',
         Category: 'Accessories',
       };
-      expect(countsOf([teclado])).toMatchObject({ unmatched: 1 });
-
       db.prepare('INSERT INTO NameSynonym (Term, Replacement) VALUES (?, ?)').run(
         'teclado',
         'keyboard',
