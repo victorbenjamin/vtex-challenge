@@ -248,3 +248,10 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **263 testes, sem mudança.**
     - `performance-and-scale.md`, `evolution.md` (marcado como feito), o README (saiu a limitação) e o `CLAUDE.md` (a regra de usar `statement`) foram atualizados.
 63. **Commit e push** da análise de desempenho e escala e da correção dos prepared statements (plano 016).
+64. **Plano 017 executado: SQLite em modo WAL na cópia de trabalho,** pedido do usuário.
+    - `WORKING_DATABASE_PRAGMAS` (`foreign_keys = ON`, `journal_mode = WAL`, `synchronous = NORMAL`) é aplicada por `openWorkingDatabase` e pelo migrador.
+    - `createWorkingCopy` apaga os `-wal` e `-shm` antigos antes de copiar, para não corromper a cópia nova.
+    - **O original nunca entra em WAL.**
+    - **Medido:** 26.900 itens pelo CLI em 7,8 s (antes, 71 a 92 s). A importação do desafio não mudou. Não sobram arquivos de WAL depois dos comandos.
+    - **267 testes.** `performance-and-scale.md`, `evolution.md`, o README e o `CLAUDE.md` foram atualizados.
+65. **Commit e push** do SQLite em modo WAL (plano 017).

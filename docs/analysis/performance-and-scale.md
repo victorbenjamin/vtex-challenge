@@ -110,7 +110,9 @@ São estimativas para orientar a ordem das melhorias. **Não são medições.**
   - um item que falha desfaz só o próprio savepoint;
   - o relatório só registra o lote depois da confirmação, como hoje faz por item.
   - É exatamente o que a medição "tudo numa transação" fez: o `better-sqlite3` transforma a transação de cada item em savepoint. Foi **21 vezes mais rápido**.
-- **No SQLite atual, um ganho imediato e separado:** `journal_mode = WAL`, 7 vezes mais rápido, sem mudar o código da importação. Mas o WAL deixa arquivos auxiliares ao lado do banco, e a leitura com `immutable=1` (usada no DBeaver) precisa de cuidado.
+- **No SQLite, um ganho imediato e separado: `journal_mode = WAL`.** **Feito no plano 017:** a cópia de trabalho usa WAL com `synchronous = NORMAL`. Os 26.900 itens pelo CLI caíram de 71 a 92 s para **7,8 s**.
+  - A cópia remove os arquivos `-wal` e `-shm` antigos antes de copiar o original.
+  - Quando a conexão fecha, o SQLite transfere o WAL para o `.db`, então nada sobra entre comandos.
 - **Custo:** a falha técnica passa a desfazer o lote em curso, e não só o item. A retomada continua correta, porque a importação é idempotente. Era a decisão original do plano 006, simplificada depois.
 
 ### 5.3 Menos idas ao banco por item (Postgres)
@@ -170,7 +172,7 @@ Para cargas iniciais de milhões de itens:
 ## 6. Ordem recomendada
 
 1. ~~**Reaproveitar os prepared statements**~~ (seção 5.1): **feito no plano 016.**
-2. **Confirmar por lote com savepoint por item** (5.2), e o WAL enquanto o banco for SQLite.
+2. **Confirmar por lote com savepoint por item** (5.2). O WAL (para o SQLite) já foi feito no plano 017.
 3. **Ler o arquivo em fluxo** (5.4).
 4. **Na migração para o Postgres:** cache de sellers, `RETURNING` e busca em lote (5.3); restrição única com a marca normalizada (5.7); `pg_trgm` para os nomes parecidos (5.5).
 5. **Paralelismo por seller** e retomada por checkpoint (5.7 e 5.8), quando um processo não der conta.

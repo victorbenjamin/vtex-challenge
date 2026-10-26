@@ -100,7 +100,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - **cascata:** primeiro o nome do próprio item; só se não houver nenhum candidato da marca, o nome traduzido (`NameSynonyms.translate`). Se o nome do item for ambíguo, a tradução não é tentada.
   - **sem produto da marca por nenhum dos dois nomes (plano 011):** cria o produto, com o `NormalizedName`. Resultado `created` se o nome é inédito, `createdForReview` se ele existe com outra marca, com uma linha em `ProductReview` por produto parecido. Não cria se o SKU já aponta para algum produto (`conflict`), nem se o item é ambíguo (`unmatched`).
   - **princípio:** ligar ao produto errado é o erro caro; uma duplicata é recuperável por merge.
-- **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
+- **Conexões de escrita da cópia de trabalho** (`WORKING_DATABASE_PRAGMAS`, em `connection.ts`): `foreign_keys = ON`, `journal_mode = WAL` e `synchronous = NORMAL` (plano 017). Aplicadas por `openWorkingDatabase` e pelo migrador. `createWorkingCopy` apaga os `-wal` e `-shm` antigos antes de copiar. O original nunca entra em WAL.
 - **Prepared statements:** no `CatalogDatabase`, use sempre `this.statement(sql)`, que reaproveita o statement. Nunca chame `db.prepare` a cada consulta: a memória nativa cresceria com o tamanho do arquivo (plano 016).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.

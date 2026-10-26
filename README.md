@@ -134,6 +134,7 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
 
 **Garantias atuais:**
 
+- **SQLite em modo WAL** na cópia de trabalho (plano 017): uma confirmação só acrescenta ao arquivo `-wal`, sem reescrever páginas. A importação ficou cerca de 10 vezes mais rápida (26.900 itens em 7,8 s). Com `synchronous = NORMAL`, uma queda de energia pode perder as últimas transações, sem corromper o banco; importar de novo as refaz. O original nunca entra em WAL.
 - **Uma transação curta por item.** Uma falha técnica desfaz só o item em curso, interrompe a importação e aparece no log, com o índice do item. Os itens anteriores continuam gravados. _Simplificação temporária:_ transações por lote diluem o custo de confirmação em volumes grandes e podem voltar só no caso de uso, sem mudar o domínio.
 - **Reimportar não muda nada, e completa uma importação interrompida:** as ofertas já existentes são contadas como `alreadyLinked`.
 - **Segura com importações concorrentes:** o banco arbitra. Seller e oferta são gravados com "insere se não existir", e quem perde a corrida reavalia contra o que já está gravado, sem erro e sem sobrescrever.

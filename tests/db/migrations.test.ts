@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import type { Knex } from 'knex';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -383,6 +383,43 @@ describe('connection', () => {
 
   it('refuses to migrate the original database', () => {
     expect(() => createMigrator(ORIGINAL_DATABASE_PATH)).toThrow(/original database/);
+  });
+
+  it('opens working copies in WAL mode with NORMAL sync and foreign keys on', () => {
+    withDatabase((db) => {
+      expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+      expect(db.pragma('synchronous', { simple: true })).toBe(1); // NORMAL
+      expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    });
+  });
+
+  it('migrates working copies in WAL mode', async () => {
+    await latest();
+    const rows = (await migrator.raw('PRAGMA journal_mode')) as { journal_mode: string }[];
+
+    expect(rows[0]?.journal_mode).toBe('wal');
+  });
+
+  it('removes WAL files left by a previous working copy before copying', () => {
+    writeFileSync(`${path}-wal`, 'stale');
+    writeFileSync(`${path}-shm`, 'stale');
+
+    createWorkingCopy(path);
+
+    expect(existsSync(`${path}-wal`)).toBe(false);
+    expect(existsSync(`${path}-shm`)).toBe(false);
+    withDatabase((db) => {
+      expect(db.prepare('SELECT COUNT(*) FROM Product').pluck().get()).toBe(975);
+    });
+  });
+
+  it('leaves the original database in its rollback journal mode', () => {
+    const original = new Database(ORIGINAL_DATABASE_PATH, { readonly: true });
+    try {
+      expect(original.pragma('journal_mode', { simple: true })).toBe('delete');
+    } finally {
+      original.close();
+    }
   });
 });
 

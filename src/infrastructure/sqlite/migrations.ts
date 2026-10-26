@@ -1,6 +1,6 @@
 import knex, { type Knex } from 'knex';
 import { resolve } from 'node:path';
-import { assertNotOriginal } from './connection.ts';
+import { assertNotOriginal, WORKING_DATABASE_PRAGMAS } from './connection.ts';
 
 export const MIGRATIONS_PATH = resolve('migrations');
 
@@ -14,7 +14,9 @@ export function createMigrator(databasePath: string): Knex {
     useNullAsDefault: true,
     pool: {
       afterCreate: (connection: { pragma: (sql: string) => void }, done: () => void) => {
-        connection.pragma('foreign_keys = ON');
+        for (const pragma of WORKING_DATABASE_PRAGMAS) {
+          connection.pragma(pragma);
+        }
         done();
       },
     },
