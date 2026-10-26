@@ -1,6 +1,6 @@
 # Fluxo de decisão de um item da importação
 
-Como a importação decide o que fazer com cada item do arquivo, e quais resultados são possíveis. Reflete o código de `ImportCatalog` (`src/application/import-catalog.ts`) até o plano 010. **O último losango ("criar produto") ainda não está implementado:** é o assunto do plano 011, com a decisão entre as opções A e B em aberto.
+Como a importação decide o que fazer com cada item do arquivo, e quais resultados são possíveis. Reflete o código de `ImportCatalog` (`src/application/import-catalog.ts`) até o plano 010. Qualquer seller pode enviar itens, inclusive o `Marketplace`: os itens dele viram ofertas do seller criado pela migração 002, sem tratamento especial. **O último losango ("criar produto") ainda não está implementado:** é o assunto do plano 011, com a decisão entre as opções A e B em aberto.
 
 ## Desenho
 
@@ -8,10 +8,9 @@ Como a importação decide o que fazer com cada item do arquivo, e quais resulta
                          item do arquivo
                                │
                      ┌─────────▼─────────┐
-                     │  válido? seller   │── não ──► REJEITADO
-                     │  ≠ Marketplace?   │
+                     │      válido?      │── não ──► REJEITADO
                      └─────────┬─────────┘
-                               │ sim
+                               │ sim (qualquer seller, inclusive o Marketplace)
                      ┌─────────▼──────────────────────────┐
                      │ busca pelo NOME NORMALIZADO do item │
                      └─────────┬──────────────────────────┘
@@ -72,7 +71,6 @@ Cada item termina em exatamente um resultado, contado no `ImportSummary` (`src/d
 | Resultado | Quando acontece | O que é gravado | Exemplo | Estado |
 |---|---|---|---|---|
 | `rejected` | **Item inválido:** `Id`, `SellerName` ou `Name` ausente ou vazio; `Brand` ou `Category` com tipo errado; o item não é um objeto. | Nada | `{ "Id": "", ... }` (não há caso no arquivo) | Implementado |
-| `rejected` | **Seller com o nome do marketplace** (`Marketplace`, em qualquer combinação de maiúsculas e minúsculas). As ofertas do marketplace vêm do catálogo, nunca de um arquivo. | Nada | `SellerName: " MARKETPLACE "` (não há caso no arquivo) | Implementado |
 | `linked` | Exatamente **um** produto com o mesmo nome normalizado (próprio ou traduzido) e a mesma marca normalizada, e o seller **ainda não tinha** oferta para esse SKU. | O seller, se for novo, e a oferta (seller, SKU, produto) | #0 MegaStore `Smartphone Galaxy S23` → produto 2; #57 `Roteador WiFi 6 TP-Link` → 21 (tradução) | Implementado |
 | `alreadyLinked` | O produto foi encontrado, e o seller **já tinha** oferta para esse SKU **apontando para o mesmo produto**. É um reenvio ou uma reimportação. | Nada (idempotente) | #76 GardenStore `Camera Canon EOS R6`, com o mesmo SKU da #55 `Câmera…`; qualquer item na segunda execução | Implementado |
 | `conflict` | O produto foi encontrado, mas o seller **já tinha** oferta para esse SKU **apontando para outro produto**. A oferta existente nunca é sobrescrita: na dúvida, prevalece a precisão. | Nada | Reenviar `sku-1` da MegaStore com outro produto (não há caso no arquivo) | Implementado |

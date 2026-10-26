@@ -42,7 +42,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 **Arquitetura** (planos 005, 006 e 007): `cli → application → domain`, com `infrastructure` usada pela aplicação. **Mantenha poucos tipos** (plano 007): `SellerProductEntry`, `Offer`, `ImportSummary` (domain), `ImportCatalog` (application) e `CatalogDatabase` (infrastructure, todo o SQL).
 
-- **O domínio (`src/domain/`) não importa nada de fora dele.** As regras ficam nos objetos que têm os dados (`SellerProductEntry.parse`/`isFromMarketplace`, `Offer.outcomeGiven`). Não crie interfaces sem uma segunda implementação (não há mocks), nem classes sem comportamento.
+- **O domínio (`src/domain/`) não importa nada de fora dele.** As regras ficam nos objetos que têm os dados (`SellerProductEntry.parse`/`hasBrand`, `Offer.outcomeGiven`, `NameSynonyms.translate`). Não crie interfaces sem uma segunda implementação (não há mocks), nem classes sem comportamento.
 - **Desenho para volume** (plano 006): nada é carregado inteiro (catálogo ou ofertas de um seller), as consultas são por chave ou índice, as transações são curtas, uma por item (o lote foi retirado temporariamente a pedido do usuário), e a gravação é segura contra concorrência ("insere se não existir" e reavaliação). Não reintroduza carga em memória nem uma transação única.
 - **Testes sem mocks:**
   - domínio testado diretamente;
@@ -68,7 +68,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - `Seller (Id, Name UNIQUE COLLATE NOCASE)`.
   - `SellerProduct (SellerId, SellerProductId TEXT, ProductId)`, com chave primária `(SellerId, SellerProductId)`, `WITHOUT ROWID` e índice em `ProductId`.
   - **Cada linha é uma oferta (um SKU do seller).** Um seller pode ter vários SKUs para o mesmo produto.
-- **Após a migração 002:** existe o seller `Marketplace` (o próprio marketplace), com uma oferta para cada um dos 975 produtos. O `SellerProductId` dessas ofertas é o `Product.Id` em texto.
+- **Após a migração 002:** existe o seller `Marketplace` (o próprio marketplace), com uma oferta para cada um dos 975 produtos. O `SellerProductId` dessas ofertas é o `Product.Id` em texto. O arquivo de importação pode trazer itens do `Marketplace`, sem tratamento especial.
 - **Migração 003:** criou o índice `IX_Product_Name_Brand_Category`; a **migração 005 o removeu**, porque a importação busca só pelo nome normalizado (todo match exato também é normalizado).
 - **Após a migração 004:** coluna `Product.NormalizedName`, preenchida, com índice `IX_Product_NormalizedName_Brand_Category`.
   - A migração tem uma **cópia congelada** da normalização (`normalizeAtMigration004`), e um teste a compara com `normalizeProductName` (`src/domain/product-name.ts`).
@@ -90,8 +90,6 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 - **`data/catalog.db` é a entrada original e não pode ser alterada** (preferência 6). O trabalho acontece numa cópia em `output/`, que está no `.gitignore`.
 
 ## Decisões pendentes
-
-- **Como identificar o seller do marketplace** (adiado pelo usuário). Opções: coluna `Seller.IsMarketplace` numa nova migração (recomendada; a 002 já foi publicada e não deve ser editada), ou só o nome `MARKETPLACE_SELLER_NAME` como reservado. **Requisito para a importação, qualquer que seja a opção:** procurar os sellers do arquivo excluindo o marketplace e rejeitar um item cujo seller tenha o nome do marketplace. Excluir só da busca não basta, porque criar o seller bateria no `UNIQUE`. _(A rejeição já foi implementada no plano 004, comparando com o nome `MARKETPLACE_SELLER_NAME`. Falta decidir só a forma de identificar o marketplace.)_
 
 - **Relatório detalhado da importação** (adiado pelo usuário: "baby steps"). Hoje há só `ImportSummary`, com contagens no log. Ele volta quando todas as regras da cascata estiverem implementadas e deve listar, item a item, os pendentes, os conflitos e os rejeitados com o motivo, para que nada se perca em silêncio (plano 004, decisões 1 e 6).
 

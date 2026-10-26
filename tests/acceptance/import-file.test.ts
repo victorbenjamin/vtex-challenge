@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ImportSummary } from '../../src/domain/import-summary.ts';
 import { normalizeBrand } from '../../src/domain/brand.ts';
 import { normalizeProductName } from '../../src/domain/product-name.ts';
-import { MARKETPLACE_SELLER_NAME } from '../../src/domain/seller-product-entry.ts';
+import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
 import { readImportFile } from '../../src/infrastructure/import-file.ts';
 import { CatalogDatabase } from '../../src/infrastructure/sqlite/catalog-database.ts';
 import { ORIGINAL_DATABASE_PATH } from '../../src/infrastructure/sqlite/connection.ts';

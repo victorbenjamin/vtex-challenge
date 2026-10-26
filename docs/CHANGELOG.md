@@ -160,3 +160,11 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - Contém a tabela de **todos os resultados possíveis** (`rejected`, `linked`, `alreadyLinked`, `conflict`, `unmatched` com os quatro motivos, `created` planejado e a falha técnica), cada um com quando acontece, o que é gravado, um exemplo e o estado.
     - Incluído no mapa da documentação do `CLAUDE.md`.
 42. **Commit e push** do fluxo de decisão de um item (`docs/analysis/import-decision-flow.md`).
+43. **O arquivo de importação pode trazer itens do `Marketplace`.** Pedido do usuário: o enunciado não proíbe isso, e a rejeição era uma proteção nossa (entrada 22; plano 004, decisão 5).
+    - Saíram `SellerProductEntry.isFromMarketplace`, a constante `MARKETPLACE_SELLER_NAME` do domínio (continua exportada pela migração 002 e usada só nos testes) e a rejeição em `ImportCatalog`.
+    - Os itens do `Marketplace` viram ofertas do seller criado pela migração 002, como os de qualquer seller. Um item com o próprio `Product.Id` como SKU é reconhecido como já ligado.
+    - **Resultado sobre o arquivo inalterado:** 267 ligados, 1 já ligado e 1 pendente. 150 testes.
+    - **Removida do `CLAUDE.md` a decisão pendente** sobre como identificar o marketplace, que deixou de existir.
+    - Atualizados: `import-decision-flow.md` (desenho e tabela), `README.md`, `CLAUDE.md` e as notas dos planos 003 e 004.
+    - **Antes disso,** uma implementação de "criar produto" feita por um mal-entendido foi desfeita a pedido do usuário, sem chegar a ser commitada.
+44. **Commit e push** da aceitação de itens do `Marketplace` no arquivo de importação.

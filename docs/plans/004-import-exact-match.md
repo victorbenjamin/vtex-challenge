@@ -54,6 +54,7 @@ Conferido nos dados:
 
 ## Desvios
 
+- **A decisão 5 (rejeitar o nome do marketplace) foi revogada (changelog, entrada 43):** o arquivo pode trazer itens do `Marketplace`, sem tratamento especial.
 - **As decisões 3 (índice em memória) e 7 (transação única) foram revistas no plano 006**, em favor de consultas indexadas e transações por lote, pensando em volume.
 - **A estrutura em `src/import/` foi substituída pelo plano 005** (camadas e modelo de domínio rico). As regras e o comportamento foram mantidos.
 - Foi criado o utilitário de teste `tests/helpers/working-database.ts` (`createMigratedDatabase`), que monta uma cópia migrada num diretório temporário e é compartilhado pelos testes da importação.

@@ -16,7 +16,7 @@ export const CANDIDATE_LIMIT = 50;
 // as "roteador" -> "router") is tried. Category is not compared: sellers spell it
 // unreliably ("Photo" vs "Photography"). Entries that match no product are counted as
 // unmatched and not written: creating products for them would duplicate the many that
-// exist under another spelling.
+// exist under another spelling. Any seller may send entries, the marketplace itself included.
 //
 // Each item runs in its own transaction. A failing item is rolled back and stops the
 // import; re-running it completes the work, because importing is idempotent.
@@ -43,7 +43,7 @@ export class ImportCatalog {
 
   private importItem(raw: unknown, synonyms: NameSynonyms): ItemOutcome {
     const entry = SellerProductEntry.parse(raw);
-    if (!entry || entry.isFromMarketplace()) {
+    if (!entry) {
       return 'rejected';
     }
 

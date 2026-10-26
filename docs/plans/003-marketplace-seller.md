@@ -32,3 +32,7 @@ Representar o próprio marketplace como um seller e ligar a ele, em `SellerProdu
 ## Desvios
 
 Nenhum.
+
+## Revisões posteriores
+
+- **Changelog, entrada 43:** a limitação da decisão 2 (um seller externo chamado "Marketplace" seria confundido com o próprio marketplace) deixou de ser tratada como problema. O arquivo de importação pode trazer itens do `Marketplace`, que viram ofertas deste seller sem tratamento especial. A ideia da coluna `Seller.IsMarketplace` foi abandonada.

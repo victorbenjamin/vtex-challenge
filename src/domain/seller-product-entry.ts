@@ -1,9 +1,6 @@
 import { normalizeBrand } from './brand.ts';
 import { normalizeProductName } from './product-name.ts';
 
-// Name of the seller that represents the marketplace itself (created by migration 002).
-export const MARKETPLACE_SELLER_NAME = 'Marketplace';
-
 const isNonEmptyText = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
@@ -47,11 +44,5 @@ export class SellerProductEntry {
   // matches a missing brand.
   hasBrand(brand: string | null): boolean {
     return normalizeBrand(this.brand) === normalizeBrand(brand);
-  }
-
-  // The marketplace's own offers come from the catalog, never from an import file, so an
-  // external seller must not use its name (compared ignoring case, like the database does).
-  isFromMarketplace(): boolean {
-    return this.sellerName.toLowerCase() === MARKETPLACE_SELLER_NAME.toLowerCase();
   }
 }

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MARKETPLACE_SELLER_NAME as MIGRATION_MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
-import {
-  MARKETPLACE_SELLER_NAME,
-  SellerProductEntry,
-} from '../../src/domain/seller-product-entry.ts';
+import { SellerProductEntry } from '../../src/domain/seller-product-entry.ts';
 
 const valid = {
   Id: 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d',
@@ -65,22 +61,6 @@ describe('SellerProductEntry.parse', () => {
 
   it.each([null, 'text', [valid]])('rejects %j because it is not an object', (raw) => {
     expect(SellerProductEntry.parse(raw)).toBeUndefined();
-  });
-});
-
-describe('SellerProductEntry.isFromMarketplace', () => {
-  it.each(['Marketplace', 'marketplace', ' MARKETPLACE '])('is true for %j', (SellerName) => {
-    expect(SellerProductEntry.parse({ ...valid, SellerName })?.isFromMarketplace()).toBe(true);
-  });
-
-  it('is false for other sellers', () => {
-    expect(
-      SellerProductEntry.parse({ ...valid, SellerName: 'Marketplace Store' })?.isFromMarketplace(),
-    ).toBe(false);
-  });
-
-  it('uses the same marketplace name as migration 002', () => {
-    expect(MARKETPLACE_SELLER_NAME).toBe(MIGRATION_MARKETPLACE_SELLER_NAME);
   });
 });
 

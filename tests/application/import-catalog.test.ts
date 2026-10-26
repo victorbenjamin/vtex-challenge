@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CANDIDATE_LIMIT } from '../../src/application/import-catalog.ts';
-import { MARKETPLACE_SELLER_NAME } from '../../src/domain/seller-product-entry.ts';
+import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
 import {
   createMigratedDatabase,
   sqliteImportCatalog,
@@ -104,14 +104,22 @@ describe('ImportCatalog', () => {
     expect(offersOf('MegaStore')).toEqual([['sku-1', 2]]);
   });
 
-  it('rejects the marketplace seller name in any case', () => {
+  it('accepts items from the marketplace as offers of its own seller', () => {
     expect(
       countsOf([
-        { Id: 'sku-1', SellerName: MARKETPLACE_SELLER_NAME, ...galaxy },
-        { Id: 'sku-2', SellerName: ` ${MARKETPLACE_SELLER_NAME.toUpperCase()} `, ...galaxy },
+        { Id: 'mkt-1', SellerName: MARKETPLACE_SELLER_NAME, ...galaxy },
+        { Id: 'mkt-2', SellerName: ` ${MARKETPLACE_SELLER_NAME.toUpperCase()} `, ...iphone },
       ]),
-    ).toMatchObject({ rejected: 2 });
-    expect(offersOf(MARKETPLACE_SELLER_NAME)).toHaveLength(975);
+    ).toMatchObject({ linked: 2, rejected: 0 });
+    expect(offersOf(MARKETPLACE_SELLER_NAME)).toHaveLength(977);
+    expect(externalSellers()).toEqual([]);
+  });
+
+  it('recognizes the marketplace offers created by migration 002', () => {
+    // Migration 002 offers each product with its id as the SKU.
+    expect(countsOf([{ Id: '2', SellerName: MARKETPLACE_SELLER_NAME, ...galaxy }])).toMatchObject({
+      alreadyLinked: 1,
+    });
   });
 
   it('links names that differ from the catalog only in spelling', () => {
