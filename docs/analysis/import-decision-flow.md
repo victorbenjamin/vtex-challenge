@@ -58,7 +58,10 @@ Como a importação decide o que fazer com cada item do arquivo, e quais resulta
 **Princípio por trás do desenho:** o erro caro é **ligar a oferta ao produto errado**, porque o cliente compraria uma coisa e receberia outra. Uma duplicata é recuperável com um merge ([estudo §2](entity-resolution-study.md)). Por isso:
 - **Na dúvida sobre a marca,** o seller ganha um produto próprio, nunca o de outra marca, e a suspeita fica registrada em `ProductReview` (migração 007) para alguém revisar.
 - **Um item ambíguo nunca cria produto:** se há vários produtos com o mesmo nome e a mesma marca, o produto existe, só não se sabe qual. Criar outro seria duplicata garantida.
-- **O merge** (apontar as ofertas da duplicata para o produto certo) é o plano 012. O modelo já permite: corrigir um match é um `UPDATE` de `ProductId` em `SellerProduct`.
+- **A revisão é resolvida pelo comando `catalog`** (plano 012):
+  - `merge` move as ofertas da duplicata para o produto certo (um `UPDATE` de `ProductId` em `SellerProduct`) e marca a duplicata com `MergedIntoId`;
+  - `distinct` encerra a revisão sem mudar nada.
+- **Um produto mesclado vira apelido:** a busca o encontra pelo nome e pela marca dele, mas devolve o produto em que foi mesclado. A mesma variação, depois de resolvida, não volta para revisão. Com a revisão ainda pendente, ela liga à duplicata, e o merge leva todas as ofertas juntas.
 
 ## Todos os resultados possíveis de um item
 

@@ -116,10 +116,15 @@ export class ImportCatalog {
     if (candidates.length === CANDIDATE_LIMIT) {
       return { kind: 'ambiguous' };
     }
-    const [match, another] = candidates.filter((candidate) => entry.hasBrand(candidate.brand));
-    if (!match) {
-      return { kind: 'notFound', similarProductIds: candidates.map(({ id }) => id) };
+    // Candidates are distinct product ids: a merged product resolves to the one it was
+    // merged into, so it may appear twice without being ambiguous.
+    const distinctIds = (products: { id: number }[]) => [...new Set(products.map(({ id }) => id))];
+    const [match, another] = distinctIds(
+      candidates.filter((candidate) => entry.hasBrand(candidate.brand)),
+    );
+    if (match === undefined) {
+      return { kind: 'notFound', similarProductIds: distinctIds(candidates) };
     }
-    return another ? { kind: 'ambiguous' } : { kind: 'found', productId: match.id };
+    return another === undefined ? { kind: 'found', productId: match } : { kind: 'ambiguous' };
   }
 }

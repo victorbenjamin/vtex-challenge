@@ -181,3 +181,13 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **Corrigido** o teste de ambiguidade que, desde o plano 008, inseria produtos sem `NormalizedName` e passava por acaso.
     - Documentação: `import-decision-flow.md` reescrito; `README.md`, `CLAUDE.md`, `data-analysis §5` e o plano 004 atualizados.
 47. **Commit e push** do incremento 5 (criar produto, com revisão), da migração 007 e da documentação.
+48. **Merge de produtos duplicados.** Plano em `docs/plans/012-merge-products.md`.
+    - **Decisões do usuário:** a duplicata é marcada como mesclada, e não apagada; o merge aceita qualquer par de produtos ativos.
+    - **Migração 008:** `Product.MergedIntoId`, com chave estrangeira e `CHECK` contra mesclar um produto em si mesmo.
+    - **Um produto mesclado vira apelido do destino:** `findProductsByNormalizedName` devolve `coalesce(MergedIntoId, Id)`, e `ImportCatalog` deduplica os candidatos por id. Por isso a mesma variação de marca, depois de resolvida (mesclada ou distinta), não volta para revisão, e o reenvio do item da duplicata dá `alreadyLinked`.
+    - **Casos de uso** `MergeProducts` (move as ofertas, marca o produto, refaz a cadeia e encerra as revisões, numa transação) e `MarkDistinct`.
+    - **Métodos novos no `CatalogDatabase`** para o merge e a listagem de revisões pendentes.
+    - **CLI `npm run catalog -- reviews | merge | distinct`.**
+    - **197 testes,** incluindo os cenários de recorrência perguntados pelo usuário (revisão pendente, depois do merge e depois de marcar como distintos) e o merge que desfaz uma ambiguidade do catálogo. A importação do arquivo do desafio não mudou.
+    - `README.md`, `CLAUDE.md` e `import-decision-flow.md` foram atualizados.
+49. **Commit e push** do merge de produtos duplicados (plano 012), da migração 008 e da documentação.

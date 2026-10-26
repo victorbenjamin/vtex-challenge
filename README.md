@@ -26,6 +26,9 @@ Requisitos: Node 22 ou superior (veja `.nvmrc`) e npm.
 npm install
 npm run db:reset       # copia data/catalog.db para output/ e aplica as migrações na cópia
 npm run import         # importa data/ProductEntry.json na cópia e mostra as contagens no log
+npm run catalog -- reviews                      # lista as possíveis duplicatas pendentes
+npm run catalog -- merge <duplicata> <destino>  # mescla uma duplicata no produto certo
+npm run catalog -- distinct <produto> <parecido> # marca um par revisado como produtos distintos
 npm test               # testes (vitest)
 npm run typecheck      # checagem de tipos (tsc)
 ```
@@ -63,6 +66,7 @@ O schema original não acomodava os dados: `SellerProductId` era `INTEGER`, mas 
 - [`005`](migrations/005_drop_product_exact_match_index.ts) remove o índice da 003. Todo match exato também é um match normalizado, então a importação busca só pelo nome normalizado, e um índice sem uso ainda custaria em toda escrita.
 - [`006`](migrations/006_name_synonym.ts) cria a tabela `NameSynonym (Term, Replacement)` com as duas traduções do desafio. A operação pode incluir sinônimos sem nova migração.
 - [`007`](migrations/007_product_review.ts) cria a tabela `ProductReview`: produtos criados pela importação que podem duplicar um existente (mesmo nome, outra marca), com status `pending`, `merged` ou `distinct`.
+- [`008`](migrations/008_product_merged_into.ts) cria a coluna `Product.MergedIntoId`. Um produto mesclado continua no banco, apontando para o produto em que foi mesclado.
 
 O schema resultante:
 
@@ -116,7 +120,11 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
    - **Um item ambíguo nunca cria produto:** se há vários candidatos da mesma marca, o produto existe.
    - **Se o SKU do seller já aponta para algum produto, nada é criado:** o resultado é `conflict`.
    - **O produto novo não ganha oferta do `Marketplace`.**
-   - **O merge** das duplicatas confirmadas é o próximo passo (plano 012).
+   - **Resolução das revisões** (plano 012), pelo comando `catalog`:
+     - **`merge <D> <P>`** move as ofertas de D para P, marca D como mesclado (`MergedIntoId`) e encerra as revisões de D. Aceita qualquer par de produtos ativos, inclusive duplicatas antigas do catálogo.
+     - **`distinct <D> <P>`** encerra a revisão do par, sem mudar produtos nem ofertas.
+   - **Um produto mesclado vira apelido do destino:** a busca devolve o destino. Por isso, depois de resolvida, a mesma variação (o mesmo nome com a mesma marca) **não volta para revisão**: liga ao destino, se foi mesclada, ou ao próprio D, se foi marcada como distinta. Só uma variação nova abre revisão.
+   - **Com a revisão ainda pendente,** a mesma variação também não abre outra revisão: liga a D, e o merge depois leva todas as ofertas de D juntas.
 
 **Garantias atuais:**
 
@@ -139,7 +147,7 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
 - paralelismo por seller;
 - Postgres no lugar do SQLite;
 - match aproximado **com proteções** (números iguais, marcas compatíveis, palavras de variante iguais, como Men/Women), antes de criar produto, com busca de candidatos em vez de comparar com o catálogo inteiro;
-- o comando de merge de duplicatas (plano 012) e a revisão das marcadas em `ProductReview`.
+- uma interface de revisão para as possíveis duplicatas, além do comando `catalog`.
 
 ## Arquitetura
 
@@ -172,11 +180,11 @@ data/            entrada original do desafio (somente leitura)
 migrations/      migrações de schema (Knex)
 src/
   domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, NameSynonyms, normalizeProductName, normalizeBrand
-  application/   caso de uso ImportCatalog
+  application/   casos de uso ImportCatalog, MergeProducts e MarkDistinct
   infrastructure/
     sqlite/      CatalogDatabase (todo o SQL), conexão e migrações
     import-file  leitura do arquivo JSON
-  cli/           comandos db:migrate, db:reset e import
+  cli/           comandos db:migrate, db:reset, import e catalog
 tests/           domain/, infrastructure/, application/, acceptance/ e db/ (vitest, sem mocks)
 docs/
   analysis/      análise dos dados e estudo de técnicas de entity resolution

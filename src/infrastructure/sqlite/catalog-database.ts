@@ -3,8 +3,18 @@ import { NameSynonyms } from '../../domain/name-synonyms.ts';
 import type { Offer } from '../../domain/offer.ts';
 import type { SellerProductEntry } from '../../domain/seller-product-entry.ts';
 
-// Why a created product was recorded for review (see migration 007).
+// Why a created product was recorded for review, and how a review ends (see migration 007).
 export type ProductReviewReason = 'sameNameOtherBrand';
+export type ProductReviewResolution = 'merged' | 'distinct';
+
+export interface PendingReview {
+  id: number;
+  productId: number;
+  product: string;
+  similarProductId: number;
+  similarProduct: string;
+  createdAt: string;
+}
 
 // All the SQL the import needs. Every query is parameterized (the import file carries
 // seller-provided text) and looks rows up by key or index, never by loading a whole table.
@@ -28,14 +38,18 @@ export class CatalogDatabase {
   }
 
   // Up to `limit` products whose name is the given normalized name, with their brand for
-  // the caller to compare. Served by the NormalizedName prefix of
-  // IX_Product_NormalizedName_Brand_Category, which also covers Brand.
+  // the caller to compare. A product merged into another resolves to it: its name and brand
+  // stay known, as an alias of the product it was merged into. Served by the NormalizedName
+  // prefix of IX_Product_NormalizedName_Brand_Category.
   findProductsByNormalizedName(
     normalizedName: string,
     limit: number,
   ): { id: number; brand: string | null }[] {
     return this.db
-      .prepare('SELECT Id AS id, Brand AS brand FROM Product WHERE NormalizedName = ? LIMIT ?')
+      .prepare(
+        `SELECT coalesce(MergedIntoId, Id) AS id, Brand AS brand
+         FROM Product WHERE NormalizedName = ? LIMIT ?`,
+      )
       .all(normalizedName, limit) as { id: number; brand: string | null }[];
   }
 
@@ -70,6 +84,67 @@ export class CatalogDatabase {
     for (const similarProductId of similarProductIds) {
       insert.run(productId, similarProductId, reason);
     }
+  }
+
+  // The product with this id and the product it was merged into, if any.
+  findProductForMerge(id: number): { id: number; mergedIntoId: number | null } | undefined {
+    return this.db
+      .prepare('SELECT Id AS id, MergedIntoId AS mergedIntoId FROM Product WHERE Id = ?')
+      .get(id) as { id: number; mergedIntoId: number | null } | undefined;
+  }
+
+  // Points every offer of one product to another. Returns how many offers moved. The key
+  // of SellerProduct is (SellerId, SellerProductId), so no offer can collide.
+  moveOffers(fromProductId: number, toProductId: number): number {
+    return this.db
+      .prepare('UPDATE SellerProduct SET ProductId = ? WHERE ProductId = ?')
+      .run(toProductId, fromProductId).changes;
+  }
+
+  // Marks a product as merged into another, and repoints the products previously merged
+  // into it, so MergedIntoId always points to an active product.
+  markMerged(duplicateId: number, targetId: number): void {
+    this.db.prepare('UPDATE Product SET MergedIntoId = ? WHERE Id = ?').run(targetId, duplicateId);
+    this.db
+      .prepare('UPDATE Product SET MergedIntoId = ? WHERE MergedIntoId = ?')
+      .run(targetId, duplicateId);
+  }
+
+  // Ends every pending review that mentions the product. Returns how many ended.
+  resolveReviewsOf(productId: number, resolution: ProductReviewResolution): number {
+    return this.db
+      .prepare(
+        `UPDATE ProductReview SET Status = ?
+         WHERE Status = 'pending' AND (ProductId = ? OR SimilarProductId = ?)`,
+      )
+      .run(resolution, productId, productId).changes;
+  }
+
+  // Ends the pending review of a pair, in either direction. Returns how many ended.
+  markReviewDistinct(productId: number, similarProductId: number): number {
+    return this.db
+      .prepare(
+        `UPDATE ProductReview SET Status = 'distinct'
+         WHERE Status = 'pending'
+           AND ((ProductId = ? AND SimilarProductId = ?) OR (ProductId = ? AND SimilarProductId = ?))`,
+      )
+      .run(productId, similarProductId, similarProductId, productId).changes;
+  }
+
+  listPendingReviews(): PendingReview[] {
+    return this.db
+      .prepare(
+        `SELECT r.Id AS id,
+                p.Id AS productId, p.Name || ' / ' || coalesce(p.Brand, '-') AS product,
+                s.Id AS similarProductId, s.Name || ' / ' || coalesce(s.Brand, '-') AS similarProduct,
+                r.CreatedAt AS createdAt
+         FROM ProductReview r
+         JOIN Product p ON p.Id = r.ProductId
+         JOIN Product s ON s.Id = r.SimilarProductId
+         WHERE r.Status = 'pending'
+         ORDER BY r.Id`,
+      )
+      .all() as PendingReview[];
   }
 
   // The Name column is COLLATE NOCASE: a seller is found regardless of case. If another

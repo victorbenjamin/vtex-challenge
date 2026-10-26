@@ -65,6 +65,7 @@ describe('migrations', () => {
       '005_drop_product_exact_match_index.ts',
       '006_name_synonym.ts',
       '007_product_review.ts',
+      '008_product_merged_into.ts',
     ]);
     expect(sha256(ORIGINAL_DATABASE_PATH)).toBe(originalHash);
   });
@@ -166,6 +167,7 @@ describe('migrations', () => {
       '005_drop_product_exact_match_index.ts',
       '006_name_synonym.ts',
       '007_product_review.ts',
+      '008_product_merged_into.ts',
     ]);
   });
 
@@ -470,5 +472,36 @@ describe('product review (migration 007)', () => {
         db.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name = 'ProductReview'").pluck().get(),
       ).toBe(0);
     });
+  });
+});
+
+describe('merged products (migration 008)', () => {
+  beforeEach(async () => {
+    await latest();
+  });
+
+  it('starts with no product merged', () => {
+    withDatabase((db) => {
+      expect(
+        db.prepare('SELECT COUNT(*) FROM Product WHERE MergedIntoId IS NOT NULL').pluck().get(),
+      ).toBe(0);
+    });
+  });
+
+  it('refuses a product merged into itself or into an unknown product', () => {
+    withDatabase((db) => {
+      expect(() => db.exec('UPDATE Product SET MergedIntoId = 1 WHERE Id = 1')).toThrow(
+        /CHECK constraint failed/,
+      );
+      expect(() => db.exec('UPDATE Product SET MergedIntoId = 999999 WHERE Id = 1')).toThrow(
+        /FOREIGN KEY constraint failed/,
+      );
+    });
+  });
+
+  it('rolls back', async () => {
+    await rollBackTo('007');
+
+    expect(productColumnNames()).not.toContain('MergedIntoId');
   });
 });

@@ -30,6 +30,7 @@ npm run format:check   # prettier
 npm run db:migrate     # cria output/catalog.db (se faltar) e aplica as migrações pendentes
 npm run db:reset       # recopia o original para output/ e aplica todas as migrações
 npm run import         # importa data/ProductEntry.json em output/catalog.db; contagens no log (relatório detalhado adiado)
+npm run catalog -- reviews | merge <duplicata> <destino> | distinct <produto> <parecido>
 ```
 
 **Migrações:** usam o Knex, só para migrações (a aplicação usa `better-sqlite3` diretamente).
@@ -75,7 +76,11 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - **Se a normalização mudar,** crie uma nova migração que recalcule a coluna. Nunca edite a 004.
   - **Todo produto criado** pela importação precisa gravar o `NormalizedName`.
 - **Após a migração 006:** tabela `NameSynonym (Term, Replacement)`, com `roteador → router` e `processador → processor`.
-- **Após a migração 007:** tabela `ProductReview (ProductId, SimilarProductId, Reason, Status)`, com as possíveis duplicatas criadas pela importação. O status é `pending`, `merged` ou `distinct`; o merge é o plano 012.
+- **Após a migração 007:** tabela `ProductReview (ProductId, SimilarProductId, Reason, Status)`, com as possíveis duplicatas criadas pela importação. O status é `pending`, `merged` ou `distinct`.
+- **Após a migração 008:** coluna `Product.MergedIntoId` (plano 012).
+  - Um produto mesclado **não é apagado**: vira apelido do destino. `findProductsByNormalizedName` devolve `coalesce(MergedIntoId, Id)`, e os candidatos são deduplicados por id.
+  - **Invariante:** `MergedIntoId` sempre aponta para um produto ativo. `markMerged` refaz a cadeia.
+  - `MergeProducts` move as ofertas, marca o produto e encerra as revisões; `MarkDistinct` encerra a revisão do par.
   - Os sinônimos valem **num sentido só e só no nome do item**. O catálogo e o `NormalizedName` não mudam, então incluir um sinônimo não exige migração.
 - **Regra de match (planos 009 e 010):**
   - nome normalizado (`normalizeProductName`) e marca normalizada (`normalizeBrand`, com nulo só igual a nulo);

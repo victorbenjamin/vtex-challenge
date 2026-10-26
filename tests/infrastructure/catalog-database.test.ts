@@ -195,6 +195,7 @@ describe('CatalogDatabase.createProduct', () => {
       Brand: 'Fujifilm',
       Category: 'Photo',
       NormalizedName: 'camera instantanea',
+      MergedIntoId: null,
     });
   });
 
@@ -248,5 +249,59 @@ describe('CatalogDatabase.addProductReviews', () => {
     catalog.addProductReviews(3, [1], 'sameNameOtherBrand');
 
     expect(reviews()).toHaveLength(1);
+  });
+});
+
+describe('CatalogDatabase merge support', () => {
+  it('resolves a merged product to the one it was merged into, still using the index', () => {
+    catalog.markMerged(18, 2);
+
+    expect(catalog.findProductsByNormalizedName('camera canon eos r6', 50)).toEqual([
+      { id: 2, brand: 'Canon' },
+    ]);
+    const plan = db
+      .prepare(
+        `EXPLAIN QUERY PLAN SELECT coalesce(MergedIntoId, Id) AS id, Brand AS brand
+         FROM Product WHERE NormalizedName = ? LIMIT ?`,
+      )
+      .all('x', 2) as { detail: string }[];
+    expect(plan.map(({ detail }) => detail).join()).toContain(
+      'IX_Product_NormalizedName_Brand_Category',
+    );
+  });
+
+  it('moves offers and reports how many moved', () => {
+    const sellerId = catalog.findOrCreateSeller('MegaStore');
+    catalog.addOfferIfAbsent(new Offer(sellerId, 'sku-1', 18));
+
+    // Product 18 also has its marketplace offer from migration 002.
+    expect(catalog.moveOffers(18, 2)).toBe(2);
+    expect(catalog.findOfferProductId(sellerId, 'sku-1')).toBe(2);
+  });
+
+  it('keeps merged products pointing to an active product', () => {
+    catalog.markMerged(3, 18);
+    catalog.markMerged(18, 2);
+
+    expect(catalog.findProductForMerge(3)).toEqual({ id: 3, mergedIntoId: 2 });
+    expect(catalog.findProductForMerge(18)).toEqual({ id: 18, mergedIntoId: 2 });
+  });
+
+  it('lists and resolves pending reviews', () => {
+    catalog.addProductReviews(18, [2, 3], 'sameNameOtherBrand');
+    catalog.addProductReviews(4, [5], 'sameNameOtherBrand');
+
+    expect(
+      catalog
+        .listPendingReviews()
+        .map(({ productId, similarProductId }) => [productId, similarProductId]),
+    ).toEqual([
+      [18, 2],
+      [18, 3],
+      [4, 5],
+    ]);
+    expect(catalog.resolveReviewsOf(18, 'merged')).toBe(2);
+    expect(catalog.markReviewDistinct(5, 4)).toBe(1);
+    expect(catalog.listPendingReviews()).toEqual([]);
   });
 });
