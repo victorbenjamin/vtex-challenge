@@ -29,7 +29,7 @@ npm test               # vitest run (tests/**/*.test.ts)
 npm run format:check   # prettier
 npm run db:migrate     # cria output/catalog.db (se faltar) e aplica as migrações pendentes
 npm run db:reset       # recopia o original para output/ e aplica todas as migrações
-npm run import         # importa data/ProductEntry.json em output/catalog.db; contagens no log (relatório detalhado adiado)
+npm run import         # importa data/ProductEntry.json em output/catalog.db; contagens no log e relatório item a item em output/import-report.json
 npm run catalog -- reviews | merge <duplicata> <destino> | distinct <produto> <parecido>
 ```
 
@@ -41,7 +41,7 @@ npm run catalog -- reviews | merge <duplicata> <destino> | distinct <produto> <p
 
 Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`.
 
-**Arquitetura** (planos 005, 006 e 007): `cli → application → domain`, com `infrastructure` usada pela aplicação. **Mantenha poucos tipos** (plano 007): `SellerProductEntry`, `Offer`, `ImportSummary` (domain), `ImportCatalog` (application) e `CatalogDatabase` (infrastructure, todo o SQL).
+**Arquitetura** (planos 005, 006 e 007): `cli → application → domain`, com `infrastructure` usada pela aplicação. **Mantenha poucos tipos** (plano 007): `SellerProductEntry`, `Offer`, `ImportSummary`, `ItemResult`/`ImportRecord` (domain), `ImportCatalog`, `ProductMatcher`, `MergeProducts`, `MarkDistinct` (application) e `CatalogDatabase` (infrastructure, todo o SQL).
 
 - **O domínio (`src/domain/`) não importa nada de fora dele.** As regras ficam nos objetos que têm os dados (`SellerProductEntry.parse`/`hasBrand`, `Offer.outcomeGiven`, `NameSynonyms.translate`). Não crie interfaces sem uma segunda implementação (não há mocks), nem classes sem comportamento.
 - **Desenho para volume** (plano 006): nada é carregado inteiro (catálogo ou ofertas de um seller), as consultas são por chave ou índice, as transações são curtas, uma por item (o lote foi retirado temporariamente a pedido do usuário), e a gravação é segura contra concorrência ("insere se não existir" e reavaliação). Não reintroduza carga em memória nem uma transação única.
@@ -77,6 +77,11 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - **Todo produto criado** pela importação precisa gravar o `NormalizedName`.
 - **Após a migração 006:** tabela `NameSynonym (Term, Replacement)`, com `roteador → router` e `processador → processor`.
 - **Após a migração 007:** tabela `ProductReview (ProductId, SimilarProductId, Reason, Status)`, com as possíveis duplicatas criadas pela importação. O status é `pending`, `merged` ou `distinct`.
+- **Relatório da importação** (plano 014): `ImportCatalog.execute(items, onItem)` chama `onItem` com um `ImportRecord` por item, **depois** da confirmação da transação. O CLI grava os registros em fluxo num array JSON (`JsonArrayFile`), sem guardar o relatório na memória. Os motivos (`reason`) estão listados em `src/domain/import-record.ts`. **Divisão:**
+  - `ProductMatcher` busca o produto (`match`: `found`, `ambiguous`, `tooManyCandidates`, `notFound`);
+  - `ImportCatalog` decide e grava, devolvendo resultados pelos construtores `ItemResult.*`;
+  - `toImportRecord` monta o registro;
+  - `ImportSummary.add` conta.
 - **Após a migração 008:** coluna `Product.MergedIntoId` (plano 012).
   - Um produto mesclado **não é apagado**: vira apelido do destino. `findProductsByNormalizedName` devolve `coalesce(MergedIntoId, Id)`, e os candidatos são deduplicados por id.
   - **Invariante:** `MergedIntoId` sempre aponta para um produto ativo. `markMerged` refaz a cadeia.
@@ -99,6 +104,6 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 
 ## Decisões pendentes
 
-- **Relatório detalhado da importação** (adiado pelo usuário: "baby steps"). Hoje há só `ImportSummary`, com contagens no log. As regras da cascata já estão implementadas; ele deve listar, item a item, os pendentes, os conflitos e os rejeitados com o motivo, para que nada se perca em silêncio (plano 004, decisões 1 e 6).
+- Nenhuma no momento.
 
 Ao decidir, mova o item para o plano ou o changelog correspondente.

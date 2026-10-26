@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CANDIDATE_LIMIT } from '../../src/application/import-catalog.ts';
+import type { ImportRecord } from '../../src/domain/import-record.ts';
 import { MARKETPLACE_SELLER_NAME } from '../../migrations/002_marketplace_seller.ts';
 import {
   createMigratedDatabase,
@@ -487,5 +488,112 @@ describe('ImportCatalog transactions', () => {
 
     expect(summary.counts()).toMatchObject({ linked: 2, alreadyLinked: 2 });
     expect(summary.failure).toBeUndefined();
+  });
+});
+
+describe('ImportCatalog report records', () => {
+  const recordsOf = (items: unknown[]) => {
+    const records: ImportRecord[] = [];
+    sqliteImportCatalog(db).execute(items, (record) => records.push(record));
+    return records;
+  };
+
+  it('records each item, in file order, with what happened and why', () => {
+    db.prepare(
+      'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+    ).run('Smartphone Galaxy S23', 'Other Brand', 'Electronics', 'smartphone galaxy s23');
+    const yogaMats = [1, 2].map((n) =>
+      Number(
+        db
+          .prepare(
+            'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+          )
+          .run(`Yoga Mat ${n}`, 'Gaiam', 'Fitness', 'yoga mat').lastInsertRowid,
+      ),
+    );
+
+    const records = recordsOf([
+      { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy },
+      { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy },
+      { Id: 'sku-1', SellerName: 'MegaStore', ...iphone },
+      {
+        Id: 'sku-2',
+        SellerName: 'MegaStore',
+        Name: 'Roteador WiFi 6 TP-Link',
+        Brand: 'TP-Link',
+        Category: 'Networking',
+      },
+      { Id: 'sku-3', SellerName: 'MegaStore', ...hoverboard },
+      { Id: 'sku-4', SellerName: 'MegaStore', ...galaxy, Brand: 'Samsung Electronics' },
+      {
+        Id: 'sku-5',
+        SellerName: 'MegaStore',
+        Name: 'Yoga Mat',
+        Brand: 'Gaiam',
+        Category: 'Fitness',
+      },
+      { Id: '', SellerName: 'MegaStore', ...galaxy },
+    ]);
+
+    expect(records.map(({ index, outcome, reason }) => [index, outcome, reason])).toEqual([
+      [0, 'linked', 'matchedByName'],
+      [1, 'alreadyLinked', 'matchedByName'],
+      [2, 'conflict', 'skuPointsToAnotherProduct'],
+      [3, 'linked', 'matchedByTranslatedName'],
+      [4, 'created', 'nameNotInCatalog'],
+      [5, 'createdForReview', 'nameExistsWithOtherBrand'],
+      [6, 'unmatched', 'ambiguous'],
+      [7, 'rejected', 'Id must be non-empty text or a whole number'],
+    ]);
+    expect(records[0]).toEqual({
+      index: 0,
+      outcome: 'linked',
+      reason: 'matchedByName',
+      sellerName: 'MegaStore',
+      sellerProductId: 'sku-1',
+      name: 'Smartphone Galaxy S23',
+      brand: 'Samsung',
+      productId: 2,
+    });
+    expect(records[2]).toMatchObject({ productId: 3, existingProductId: 2 });
+    expect(records[3]).toMatchObject({ productId: 21 });
+    expect(records[4]?.productId).toEqual(expect.any(Number));
+    expect(records[5]?.similarProductIds).toHaveLength(2);
+    expect(records[6]?.candidateProductIds).toEqual(yogaMats);
+    expect(records[7]).toEqual({
+      index: 7,
+      outcome: 'rejected',
+      reason: 'Id must be non-empty text or a whole number',
+    });
+  });
+
+  it('records a conflict on a new product with the product the SKU points to', () => {
+    run([{ Id: 'sku-1', SellerName: 'MegaStore', ...galaxy }]);
+
+    expect(recordsOf([{ Id: 'sku-1', SellerName: 'MegaStore', ...hoverboard }])).toEqual([
+      expect.objectContaining({
+        outcome: 'conflict',
+        reason: 'skuPointsToAnotherProduct',
+        existingProductId: 2,
+      }),
+    ]);
+  });
+
+  it('records the failure that stopped the import, and nothing for the rolled back item', () => {
+    db.exec(`
+      CREATE TRIGGER fail_on_sku BEFORE INSERT ON SellerProduct
+      WHEN NEW.SellerProductId = 'boom'
+      BEGIN SELECT RAISE(ABORT, 'write failed'); END`);
+
+    const records = recordsOf([
+      { Id: 'sku-1', SellerName: 'MegaStore', ...galaxy },
+      { Id: 'boom', SellerName: 'MegaStore', ...iphone },
+      { Id: 'sku-3', SellerName: 'MegaStore', ...iphone },
+    ]);
+
+    expect(records.map(({ index, outcome, reason }) => [index, outcome, reason])).toEqual([
+      [0, 'linked', 'matchedByName'],
+      [1, 'failed', 'write failed'],
+    ]);
   });
 });

@@ -1,12 +1,15 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { ImportCatalog } from '../application/import-catalog.ts';
+import type { ImportSummary } from '../domain/import-summary.ts';
 import { readImportFile } from '../infrastructure/import-file.ts';
+import { JsonArrayFile } from '../infrastructure/json-array-file.ts';
 import { CatalogDatabase } from '../infrastructure/sqlite/catalog-database.ts';
 import { openWorkingDatabase, WORKING_DATABASE_PATH } from '../infrastructure/sqlite/connection.ts';
 
 // Usage: tsx src/cli/import.ts [file]   (default: data/ProductEntry.json)
-// Imports into the working copy output/catalog.db and logs how many items ended in each outcome.
+// Imports into the working copy output/catalog.db, logs how many items ended in each outcome
+// and writes what happened to each item, and why, to output/import-report.json.
 const file = resolve(process.argv[2] ?? 'data/ProductEntry.json');
 
 // The file is read before any write, so an invalid file changes nothing.
@@ -29,8 +32,17 @@ if (!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'Seller'").get()) {
   process.exit(1);
 }
 
-const summary = new ImportCatalog(new CatalogDatabase(db)).execute(items);
-db.close();
+const reportPath = join(dirname(WORKING_DATABASE_PATH), 'import-report.json');
+const report = new JsonArrayFile(reportPath);
+let summary: ImportSummary;
+try {
+  summary = new ImportCatalog(new CatalogDatabase(db)).execute(items, (record) =>
+    report.append(record),
+  );
+} finally {
+  report.close();
+  db.close();
+}
 
 const counts = summary.counts();
 console.log(`Imported ${file}`);
@@ -41,6 +53,8 @@ console.log(`  created:        ${counts.created}`);
 console.log(`  to review:      ${counts.createdForReview}`);
 console.log(`  unmatched:      ${counts.unmatched}`);
 console.log(`  rejected:       ${counts.rejected}`);
+
+console.log(`Report: ${reportPath}`);
 
 if (summary.failure) {
   const { index, message } = summary.failure;

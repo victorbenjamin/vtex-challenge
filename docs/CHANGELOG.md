@@ -201,3 +201,22 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - **210 testes;** novo `tests/infrastructure/import-file.test.ts`. A importação do arquivo do desafio não mudou.
     - `README.md` e `import-decision-flow.md` foram atualizados.
 52. **Commit e push** do plano 013 (IDs numéricos e erros de arquivo) e dos planos propostos 014 e 015.
+53. **Plano 014 executado: relatório detalhado da importação**, em JSON (escolha do usuário).
+    - `ImportCatalog.execute(items, onItem)` chama `onItem` com um `ImportRecord` (`src/domain/import-record.ts`) por item: resultado, `reason` estável (`matchedByName`, `matchedByTranslatedName`, `skuPointsToAnotherProduct`, `nameNotInCatalog`, `nameExistsWithOtherBrand`, `ambiguous`, `tooManyCandidates`, o motivo da rejeição, ou o erro em `failed`), os dados do item e os ids envolvidos (produto, produto existente, candidatos, parecidos). É chamado depois da confirmação, então o relatório nunca lista algo desfeito.
+    - `SellerProductEntry.read` informa por que um item é rejeitado.
+    - **O CLI grava `output/import-report.json` em fluxo** (`JsonArrayFile`): um array JSON escrito item a item, sem guardar o relatório na memória.
+    - Resultado no arquivo do desafio: 269 registros, com os motivos esperados (#57 e #64 pela tradução, #76 já ligado, #180 criado). 229 testes.
+    - **O pendente "relatório detalhado" saiu do `CLAUDE.md`.** `README.md` e `import-decision-flow.md` (tabela de motivos) foram atualizados.
+54. **Refatoração do relatório, a pedido do usuário:** a montagem do registro saiu do `ImportCatalog`.
+    - O caso de uso devolve um `ItemResult` (resultado, motivo, entrada e ids), sem se ocupar do formato do relatório.
+    - `toImportRecord(index, result)`, em `src/domain/import-record.ts`, monta o registro: ordem dos campos e omissão dos vazios. `ItemOutcome` foi para o mesmo arquivo.
+    - `ImportSummary.add(record)` substitui `count` e `recordFailure`.
+    - O `execute` ficou só com o laço.
+    - **Comportamento inalterado:** os testes da aplicação e da aceitação passaram sem mudança, e o relatório saiu idêntico. 232 testes; novo `tests/domain/import-record.test.ts`.
+55. **Segundo refactor do caso de uso, a pedido do usuário:** a construção dos resultados e da busca poluía o `ImportCatalog`.
+    - **A busca saiu para `ProductMatcher`** (`src/application/product-matcher.ts`), com `match(entry)` e quatro casos nomeados: `found`, `ambiguous`, `tooManyCandidates`, `notFound`. O `CANDIDATE_LIMIT` foi junto.
+    - **Construtores nomeados `ItemResult.*`** em `import-record.ts`: os motivos ficam escritos num lugar só.
+    - **O `importItem` virou um `switch`** sobre a busca; o caso de uso caiu de 166 para 106 linhas.
+    - **Comportamento inalterado:** os 232 testes passaram sem mudança, e o relatório saiu idêntico. Novos testes diretos em `tests/application/product-matcher.test.ts`: 237 no total.
+    - `README.md` (arquitetura e estrutura), `CLAUDE.md` e o plano 014 foram atualizados.
+56. **Commit e push** do relatório detalhado (plano 014) e dos dois refactors do caso de uso.

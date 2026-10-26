@@ -26,31 +26,45 @@ export class SellerProductEntry {
     readonly category: string | null,
   ) {}
 
-  // Returns undefined for an invalid item. The seller's Id is accepted in any non-empty
-  // format, text or whole number: it belongs to the seller. The product name is kept
-  // exactly as received.
-  static parse(raw: unknown): SellerProductEntry | undefined {
+  // Reads an item of an import file: the entry, or why the item is invalid. The seller's Id
+  // is accepted in any non-empty format, text or whole number: it belongs to the seller.
+  // The product name is kept exactly as received.
+  static read(raw: unknown): { entry: SellerProductEntry } | { rejection: string } {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-      return undefined;
+      return { rejection: 'item is not an object' };
     }
     const { Id, SellerName, Name, Brand, Category } = raw as Record<string, unknown>;
     const sellerProductId = sellerProductIdOf(Id);
-    if (
-      sellerProductId === undefined ||
-      !isNonEmptyText(SellerName) ||
-      !isNonEmptyText(Name) ||
-      !isOptionalText(Brand) ||
-      !isOptionalText(Category)
-    ) {
-      return undefined;
+    if (sellerProductId === undefined) {
+      return { rejection: 'Id must be non-empty text or a whole number' };
     }
-    return new SellerProductEntry(
-      sellerProductId,
-      SellerName.trim(),
-      Name,
-      Brand ?? null,
-      Category ?? null,
-    );
+    if (!isNonEmptyText(SellerName)) {
+      return { rejection: 'SellerName must be non-empty text' };
+    }
+    if (!isNonEmptyText(Name)) {
+      return { rejection: 'Name must be non-empty text' };
+    }
+    if (!isOptionalText(Brand)) {
+      return { rejection: 'Brand must be text or null' };
+    }
+    if (!isOptionalText(Category)) {
+      return { rejection: 'Category must be text or null' };
+    }
+    return {
+      entry: new SellerProductEntry(
+        sellerProductId,
+        SellerName.trim(),
+        Name,
+        Brand ?? null,
+        Category ?? null,
+      ),
+    };
+  }
+
+  // The entry, or undefined for an invalid item.
+  static parse(raw: unknown): SellerProductEntry | undefined {
+    const result = SellerProductEntry.read(raw);
+    return 'entry' in result ? result.entry : undefined;
   }
 
   get normalizedName(): string {

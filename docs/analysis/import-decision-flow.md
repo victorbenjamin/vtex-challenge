@@ -65,7 +65,19 @@ Como a importação decide o que fazer com cada item do arquivo, e quais resulta
 
 ## Todos os resultados possíveis de um item
 
-Cada item termina em exatamente um resultado, contado no `ImportSummary` (`src/domain/import-summary.ts`) e mostrado no log. A contagem não diz o **motivo** de um `rejected` ou `unmatched`; os motivos voltam com o relatório detalhado, que está adiado.
+Cada item termina em exatamente um resultado, contado no `ImportSummary` (`src/domain/import-summary.ts`) e mostrado no log. O **relatório** (`output/import-report.json`, plano 014) grava, para cada item, o resultado e o motivo (`reason`):
+
+| Resultado | `reason` | Campos extras |
+|---|---|---|
+| `linked`, `alreadyLinked` | `matchedByName` ou `matchedByTranslatedName` | `productId` |
+| `conflict` | `skuPointsToAnotherProduct` | `existingProductId` (e `productId`, se o item casou com um produto) |
+| `created` | `nameNotInCatalog` | `productId` |
+| `createdForReview` | `nameExistsWithOtherBrand` | `productId`, `similarProductIds` |
+| `unmatched` | `ambiguous` ou `tooManyCandidates` | `candidateProductIds` (se ambíguo) |
+| `rejected` | o campo inválido, por exemplo `Name must be non-empty text` | (nenhum) |
+| `failed` | o erro que parou a importação | (nenhum) |
+
+Os itens válidos também levam `sellerName`, `sellerProductId`, `name` e `brand`.
 
 | Resultado | Quando acontece | O que é gravado | Exemplo |
 |---|---|---|---|

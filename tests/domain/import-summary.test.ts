@@ -17,11 +17,11 @@ describe('ImportSummary', () => {
     expect(summary.failure).toBeUndefined();
   });
 
-  it('counts each outcome', () => {
+  it('counts each outcome of the records', () => {
     const summary = new ImportSummary();
-    summary.count('linked');
-    summary.count('linked');
-    summary.count('unmatched');
+    summary.add({ index: 0, outcome: 'linked', reason: 'matchedByName' });
+    summary.add({ index: 1, outcome: 'linked', reason: 'matchedByName' });
+    summary.add({ index: 2, outcome: 'unmatched', reason: 'ambiguous' });
 
     expect(summary.counts()).toMatchObject({ linked: 2, unmatched: 1 });
   });
@@ -34,10 +34,11 @@ describe('ImportSummary', () => {
     expect(summary.counts().linked).toBe(0);
   });
 
-  it('records where the import failed', () => {
+  it('records where the import failed, without counting it', () => {
     const summary = new ImportSummary();
-    summary.recordFailure(4, 'disk full');
+    summary.add({ index: 4, outcome: 'failed', reason: 'disk full' });
 
     expect(summary.failure).toEqual({ index: 4, message: 'disk full' });
+    expect(Object.values(summary.counts()).every((count) => count === 0)).toBe(true);
   });
 });

@@ -101,3 +101,22 @@ describe('SellerProductEntry.hasBrand', () => {
     expect(withBrand('Samsung').hasBrand('Apple')).toBe(false);
   });
 });
+
+describe('SellerProductEntry.read', () => {
+  it('returns the entry of a valid item', () => {
+    const result = SellerProductEntry.read(valid);
+
+    expect('entry' in result && result.entry.sellerProductId).toBe(valid.Id);
+  });
+
+  it.each([
+    [null, 'item is not an object'],
+    [{ ...valid, Id: 1.5 }, 'Id must be non-empty text or a whole number'],
+    [{ ...valid, SellerName: ' ' }, 'SellerName must be non-empty text'],
+    [{ ...valid, Name: undefined }, 'Name must be non-empty text'],
+    [{ ...valid, Brand: 1 }, 'Brand must be text or null'],
+    [{ ...valid, Category: [] }, 'Category must be text or null'],
+  ])('says why %j is rejected', (raw, rejection) => {
+    expect(SellerProductEntry.read(raw)).toEqual({ rejection });
+  });
+});

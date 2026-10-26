@@ -14,7 +14,7 @@ Sistema que consolida produtos enviados por vários sellers no catálogo de um m
 > - **Incremento 5 (criar produto):** pronto. Um item sem produto da mesma marca no catálogo vira um produto novo. Se o nome já existe com outra marca, o produto também é criado, mas fica registrado como possível duplicata, para revisão e merge posterior. No arquivo, cria o #180, o item de teste de SQL injection, com a marca gravada literalmente.
 > - **Resultado final:** 267 ligados, 1 já ligado, 1 criado e nenhum pendente; 976 produtos e 1.243 ofertas.
 > - O caminho de um item e todos os resultados possíveis estão em [docs/analysis/import-decision-flow.md](docs/analysis/import-decision-flow.md).
-> - Por enquanto, a importação registra só as **contagens** de cada resultado no log. O relatório detalhado item a item volta quando todas as regras estiverem implementadas.
+> - **Relatório:** cada importação mostra as contagens no log e grava em `output/import-report.json` o que aconteceu com **cada item, e por quê** (por exemplo, `linked` por `matchedByTranslatedName`, ou `unmatched` por `ambiguous`, com os candidatos).
 >
 > O histórico completo está em [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
@@ -25,7 +25,7 @@ Requisitos: Node 22 ou superior (veja `.nvmrc`) e npm.
 ```bash
 npm install
 npm run db:reset       # copia data/catalog.db para output/ e aplica as migrações na cópia
-npm run import         # importa data/ProductEntry.json na cópia e mostra as contagens no log
+npm run import         # importa data/ProductEntry.json na cópia; contagens no log e relatório em output/import-report.json
 npm run catalog -- reviews                      # lista as possíveis duplicatas pendentes
 npm run catalog -- merge <duplicata> <destino>  # mescla uma duplicata no produto certo
 npm run catalog -- distinct <produto> <parecido> # marca um par revisado como produtos distintos
@@ -157,16 +157,19 @@ O código é organizado em três camadas, com poucos tipos:
 
 ```
 cli/import.ts ─► ImportCatalog            (application: o fluxo, uma transação por item)
+                   ├─► ProductMatcher     (application: acha o produto pelo nome e pela marca)
                    ├─► SellerProductEntry (domain: valida o item; compara a marca)
                    ├─► Offer              (domain: ligado, já ligado ou conflito; nunca sobrescreve)
                    ├─► ImportSummary      (domain: contagens por resultado)
+                   ├─► ItemResult         (domain: o resultado e o motivo de cada item)
+                   ├─► ImportRecord       (domain: a linha do relatório, montada por toImportRecord)
                    └─► CatalogDatabase    (infrastructure: todo o SQL, por chave ou índice)
 ```
 
 - **As regras ficam nos objetos que têm os dados:**
   - `SellerProductEntry.parse()` e `hasBrand()`;
   - `Offer.outcomeGiven()`;
-  - a regra de ambiguidade (só um candidato casa) é uma linha em `ImportCatalog`.
+  - a busca e a regra de ambiguidade (só um candidato casa) ficam no `ProductMatcher`.
 - **O domínio não tem SQL nem importa nada de fora dele.**
 - **Sem interfaces "por precaução".** A aplicação depende da classe concreta `CatalogDatabase`. Uma interface só se justifica quando há uma segunda implementação ou um mock, e aqui não há nenhum dos dois.
 - **Testes sem mocks:**
@@ -182,7 +185,7 @@ data/            entrada original do desafio (somente leitura)
 migrations/      migrações de schema (Knex)
 src/
   domain/        regras de negócio: SellerProductEntry, Offer, ImportSummary, NameSynonyms, normalizeProductName, normalizeBrand
-  application/   casos de uso ImportCatalog, MergeProducts e MarkDistinct
+  application/   casos de uso ImportCatalog, MergeProducts e MarkDistinct; ProductMatcher
   infrastructure/
     sqlite/      CatalogDatabase (todo o SQL), conexão e migrações
     import-file  leitura do arquivo JSON

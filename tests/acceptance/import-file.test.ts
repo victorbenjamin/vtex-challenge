@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ImportRecord } from '../../src/domain/import-record.ts';
 import type { ImportSummary } from '../../src/domain/import-summary.ts';
 import { normalizeBrand } from '../../src/domain/brand.ts';
 import { normalizeProductName } from '../../src/domain/product-name.ts';
@@ -27,13 +28,14 @@ const sha256 = (path: string) => createHash('sha256').update(readFileSync(path))
 let migrated: MigratedDatabase;
 let db: Database.Database;
 let summary: ImportSummary;
+const records: ImportRecord[] = [];
 let originalHash: string;
 
 beforeAll(async () => {
   originalHash = sha256(ORIGINAL_DATABASE_PATH);
   migrated = await createMigratedDatabase();
   db = migrated.db;
-  summary = sqliteImportCatalog(db).execute(readImportFile(FILE));
+  summary = sqliteImportCatalog(db).execute(readImportFile(FILE), (record) => records.push(record));
 });
 
 afterAll(() => {
@@ -184,6 +186,50 @@ describe(`importing ${FILE}`, () => {
         normalizeBrand(item?.['Brand'] ?? null),
       ]);
     }
+  });
+
+  describe('report', () => {
+    const reasons = () => {
+      const counts: Record<string, number> = {};
+      for (const { outcome, reason } of records) {
+        const key = `${outcome}:${reason}`;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      return counts;
+    };
+
+    it('records every item of the file, in order', () => {
+      expect(records.map(({ index }) => index)).toEqual([...Array(269).keys()]);
+    });
+
+    it('explains every outcome', () => {
+      expect(reasons()).toEqual({
+        'linked:matchedByName': 265,
+        'linked:matchedByTranslatedName': 2,
+        'alreadyLinked:matchedByName': 1,
+        'created:nameNotInCatalog': 1,
+      });
+    });
+
+    it.each([
+      [57, 'linked', 'matchedByTranslatedName', 21],
+      [64, 'linked', 'matchedByTranslatedName', 28],
+      [76, 'alreadyLinked', 'matchedByName', 18],
+      [188, 'linked', 'matchedByName', 322],
+    ])('records item #%i as %s (%s) to product %i', (index, outcome, reason, productId) => {
+      expect(records[index]).toMatchObject({ index, outcome, reason, productId });
+    });
+
+    it('records the product created for #180', () => {
+      expect(records[180]).toMatchObject({
+        outcome: 'created',
+        reason: 'nameNotInCatalog',
+        sellerName: 'MegaStore',
+        name: 'Security Test Product',
+        brand: "TestBrand'; SELECT 1; --",
+        productId: 976,
+      });
+    });
   });
 
   it('completes without failure', () => {
