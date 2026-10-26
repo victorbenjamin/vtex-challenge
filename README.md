@@ -153,7 +153,7 @@ A importação segue uma cascata, do critério mais rígido para o mais tolerant
 - **Comandos para manter os sinônimos** (hoje só por SQL).
 - **LLM sugerindo merges e sinônimos,** sempre com aprovação humana: um merge errado é o erro caro.
 - **Busca de nomes parecidos sem depender da marca** (trigramas, com o FTS5 do SQLite).
-- **Escala:** transações por lote, leitura do arquivo em fluxo, Postgres com restrição única contra duplicatas concorrentes, paralelismo por seller.
+- **Escala:** transações por lote, leitura do arquivo em fluxo, Postgres com restrição única contra duplicatas concorrentes, paralelismo por seller. As medições e a projeção para Postgres estão em [docs/analysis/performance-and-scale.md](docs/analysis/performance-and-scale.md).
 
 ## Arquitetura
 

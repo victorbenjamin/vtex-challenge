@@ -20,7 +20,21 @@ export interface PendingReview {
 // seller-provided text) and looks rows up by key or index, never by loading a whole table.
 // Writes are insert-if-absent, so concurrent imports are arbitrated by the database.
 export class CatalogDatabase {
+  // Each SQL text is prepared once per connection and reused. Preparing on every call
+  // creates a native statement each time, freed only when JavaScript collects garbage, so
+  // memory grew with the size of the import file (see docs/analysis/performance-and-scale.md).
+  private readonly statements = new Map<string, Database.Statement>();
+
   constructor(private readonly db: Database.Database) {}
+
+  private statement(sql: string): Database.Statement {
+    let statement = this.statements.get(sql);
+    if (statement === undefined) {
+      statement = this.db.prepare(sql);
+      this.statements.set(sql, statement);
+    }
+    return statement;
+  }
 
   // Commits when the work returns, rolls back when it throws.
   transaction<T>(work: () => T): T {
@@ -30,7 +44,7 @@ export class CatalogDatabase {
   // All synonyms sellers' words have in the catalog's vocabulary. The table is
   // configuration-sized, unlike Product, so reading it whole is fine.
   loadNameSynonyms(): NameSynonyms {
-    const rows = this.db.prepare('SELECT Term, Replacement FROM NameSynonym').raw().all() as [
+    const rows = this.statement('SELECT Term, Replacement FROM NameSynonym').raw().all() as [
       string,
       string,
     ][];
@@ -45,21 +59,19 @@ export class CatalogDatabase {
     normalizedName: string,
     limit: number,
   ): { id: number; brand: string | null }[] {
-    return this.db
-      .prepare(
-        `SELECT coalesce(MergedIntoId, Id) AS id, Brand AS brand
+    return this.statement(
+      `SELECT coalesce(MergedIntoId, Id) AS id, Brand AS brand
          FROM Product WHERE NormalizedName = ? LIMIT ?`,
-      )
-      .all(normalizedName, limit) as { id: number; brand: string | null }[];
+    ).all(normalizedName, limit) as { id: number; brand: string | null }[];
   }
 
   // A product new to the catalog, as the seller described it. NormalizedName is set so that
   // later entries find it (see migration 004).
   createProduct({ name, brand, category, normalizedName }: SellerProductEntry): number {
     return Number(
-      this.db
-        .prepare('INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)')
-        .run(name, brand, category, normalizedName).lastInsertRowid,
+      this.statement(
+        'INSERT INTO Product (Name, Brand, Category, NormalizedName) VALUES (?, ?, ?, ?)',
+      ).run(name, brand, category, normalizedName).lastInsertRowid,
     );
   }
 
@@ -75,13 +87,14 @@ export class CatalogDatabase {
         AND MergedIntoId IS NULL
       LIMIT ?`;
     const parameters = brand === null ? [limit] : [brand, limit];
-    return this.db.prepare(sql).all(...parameters) as { id: number; normalizedName: string }[];
+    return this.statement(sql).all(...parameters) as { id: number; normalizedName: string }[];
   }
 
   // The product the seller's SKU points to, if the seller already offers that SKU.
   findOfferProductId(sellerId: number, sellerProductId: string): number | undefined {
-    return this.db
-      .prepare('SELECT ProductId FROM SellerProduct WHERE SellerId = ? AND SellerProductId = ?')
+    return this.statement(
+      'SELECT ProductId FROM SellerProduct WHERE SellerId = ? AND SellerProductId = ?',
+    )
       .pluck()
       .get(sellerId, sellerProductId) as number | undefined;
   }
@@ -92,7 +105,7 @@ export class CatalogDatabase {
     similarProductIds: readonly number[],
     reason: ProductReviewReason,
   ): void {
-    const insert = this.db.prepare(
+    const insert = this.statement(
       `INSERT INTO ProductReview (ProductId, SimilarProductId, Reason) VALUES (?, ?, ?)
        ON CONFLICT (ProductId, SimilarProductId) DO NOTHING`,
     );
@@ -103,53 +116,50 @@ export class CatalogDatabase {
 
   // The product with this id and the product it was merged into, if any.
   findProductForMerge(id: number): { id: number; mergedIntoId: number | null } | undefined {
-    return this.db
-      .prepare('SELECT Id AS id, MergedIntoId AS mergedIntoId FROM Product WHERE Id = ?')
-      .get(id) as { id: number; mergedIntoId: number | null } | undefined;
+    return this.statement(
+      'SELECT Id AS id, MergedIntoId AS mergedIntoId FROM Product WHERE Id = ?',
+    ).get(id) as { id: number; mergedIntoId: number | null } | undefined;
   }
 
   // Points every offer of one product to another. Returns how many offers moved. The key
   // of SellerProduct is (SellerId, SellerProductId), so no offer can collide.
   moveOffers(fromProductId: number, toProductId: number): number {
-    return this.db
-      .prepare('UPDATE SellerProduct SET ProductId = ? WHERE ProductId = ?')
-      .run(toProductId, fromProductId).changes;
+    return this.statement('UPDATE SellerProduct SET ProductId = ? WHERE ProductId = ?').run(
+      toProductId,
+      fromProductId,
+    ).changes;
   }
 
   // Marks a product as merged into another, and repoints the products previously merged
   // into it, so MergedIntoId always points to an active product.
   markMerged(duplicateId: number, targetId: number): void {
-    this.db.prepare('UPDATE Product SET MergedIntoId = ? WHERE Id = ?').run(targetId, duplicateId);
-    this.db
-      .prepare('UPDATE Product SET MergedIntoId = ? WHERE MergedIntoId = ?')
-      .run(targetId, duplicateId);
+    this.statement('UPDATE Product SET MergedIntoId = ? WHERE Id = ?').run(targetId, duplicateId);
+    this.statement('UPDATE Product SET MergedIntoId = ? WHERE MergedIntoId = ?').run(
+      targetId,
+      duplicateId,
+    );
   }
 
   // Ends every pending review that mentions the product. Returns how many ended.
   resolveReviewsOf(productId: number, resolution: ProductReviewResolution): number {
-    return this.db
-      .prepare(
-        `UPDATE ProductReview SET Status = ?
+    return this.statement(
+      `UPDATE ProductReview SET Status = ?
          WHERE Status = 'pending' AND (ProductId = ? OR SimilarProductId = ?)`,
-      )
-      .run(resolution, productId, productId).changes;
+    ).run(resolution, productId, productId).changes;
   }
 
   // Ends the pending review of a pair, in either direction. Returns how many ended.
   markReviewDistinct(productId: number, similarProductId: number): number {
-    return this.db
-      .prepare(
-        `UPDATE ProductReview SET Status = 'distinct'
+    return this.statement(
+      `UPDATE ProductReview SET Status = 'distinct'
          WHERE Status = 'pending'
            AND ((ProductId = ? AND SimilarProductId = ?) OR (ProductId = ? AND SimilarProductId = ?))`,
-      )
-      .run(productId, similarProductId, similarProductId, productId).changes;
+    ).run(productId, similarProductId, similarProductId, productId).changes;
   }
 
   listPendingReviews(): PendingReview[] {
-    return this.db
-      .prepare(
-        `SELECT r.Id AS id,
+    return this.statement(
+      `SELECT r.Id AS id,
                 p.Id AS productId, p.Name || ' / ' || coalesce(p.Brand, '-') AS product,
                 s.Id AS similarProductId, s.Name || ' / ' || coalesce(s.Brand, '-') AS similarProduct,
                 r.CreatedAt AS createdAt
@@ -158,31 +168,29 @@ export class CatalogDatabase {
          JOIN Product s ON s.Id = r.SimilarProductId
          WHERE r.Status = 'pending'
          ORDER BY r.Id`,
-      )
-      .all() as PendingReview[];
+    ).all() as PendingReview[];
   }
 
   // The Name column is COLLATE NOCASE: a seller is found regardless of case. If another
   // import creates the same seller concurrently, both end up with the same id.
   findOrCreateSeller(name: string): number {
-    this.db.prepare('INSERT INTO Seller (Name) VALUES (?) ON CONFLICT (Name) DO NOTHING').run(name);
-    return this.db.prepare('SELECT Id FROM Seller WHERE Name = ?').pluck().get(name) as number;
+    this.statement('INSERT INTO Seller (Name) VALUES (?) ON CONFLICT (Name) DO NOTHING').run(name);
+    return this.statement('SELECT Id FROM Seller WHERE Name = ?').pluck().get(name) as number;
   }
 
   // Stores the offer unless the seller already has one for the same SKU. Returns the
   // product that SKU already pointed to, or undefined when this offer was stored.
   addOfferIfAbsent({ sellerId, sellerProductId, productId }: Offer): number | undefined {
-    const { changes } = this.db
-      .prepare(
-        `INSERT INTO SellerProduct (SellerId, SellerProductId, ProductId) VALUES (?, ?, ?)
+    const { changes } = this.statement(
+      `INSERT INTO SellerProduct (SellerId, SellerProductId, ProductId) VALUES (?, ?, ?)
          ON CONFLICT (SellerId, SellerProductId) DO NOTHING`,
-      )
-      .run(sellerId, sellerProductId, productId);
+    ).run(sellerId, sellerProductId, productId);
     if (changes === 1) {
       return undefined;
     }
-    return this.db
-      .prepare('SELECT ProductId FROM SellerProduct WHERE SellerId = ? AND SellerProductId = ?')
+    return this.statement(
+      'SELECT ProductId FROM SellerProduct WHERE SellerId = ? AND SellerProductId = ?',
+    )
       .pluck()
       .get(sellerId, sellerProductId) as number;
   }

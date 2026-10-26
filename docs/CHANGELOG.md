@@ -236,3 +236,15 @@ Registro cronológico de tudo o que foi feito no projeto, da entrada mais antiga
     - Fica registrado também o que foi descartado de propósito: o fuzzy ligando ofertas automaticamente.
     - A lista de evolução do README passou a resumir e apontar para o documento, que também entrou no mapa do `CLAUDE.md`.
 60. **Commit e push** do documento de evoluções possíveis.
+61. **Análise de desempenho e escala:** `docs/analysis/performance-and-scale.md`, com medições em arquivos sintéticos (26.900 e 107.600 itens para ligar, 5.000 para criar) e a projeção para Postgres.
+    - **Achado 1, um defeito:** a memória nativa cresce cerca de 17 KB por item (1.858 MB com 107.600 itens), porque cada consulta prepara um statement novo. Com os statements em cache (testado num script descartável): 177 MB e 46% mais rápido.
+    - **Achado 2:** uma confirmação por item domina o tempo: ~370 itens/s hoje, 2.722 com WAL e 7.648 numa transação só (21×).
+    - **Achado 3:** o arquivo é lido inteiro para a memória.
+    - **Postgres:** a ida e volta de cada consulta pesa. A ordem recomendada é cache de sellers, `RETURNING` e busca em lote, restrição única com a marca normalizada, `pg_trgm`, paralelismo por seller, retomada por checkpoint e, para cargas iniciais, staging com `COPY`.
+    - `evolution.md` ganhou a correção dos statements (prioridade alta) e os números do lote. README e `CLAUDE.md` apontam para a análise.
+62. **Plano 016 executado: os prepared statements são reaproveitados** (corrige o vazamento de memória medido na análise de desempenho).
+    - O `CatalogDatabase` passou a preparar cada SQL uma vez, num cache (`statement(sql)`).
+    - **Medido:** com 107.600 itens, a memória do processo caiu de 1.858 MB para 178 MB, e a velocidade com WAL subiu de 2.703 para 4.989 itens/s. Com 26.900 itens no modo padrão, a memória caiu de 557 MB para 101 MB.
+    - **263 testes, sem mudança.**
+    - `performance-and-scale.md`, `evolution.md` (marcado como feito), o README (saiu a limitação) e o `CLAUDE.md` (a regra de usar `statement`) foram atualizados.
+63. **Commit e push** da análise de desempenho e escala e da correção dos prepared statements (plano 016).

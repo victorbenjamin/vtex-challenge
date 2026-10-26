@@ -59,6 +59,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
 | `docs/analysis/data-analysis.md`           | Para decisões sobre schema, validação, normalização, matching ou testes. A seção 4 lista as decisões que saem dos dados, e a seção 5 é o gabarito de aceitação.                                               |
 | `docs/analysis/import-decision-flow.md`    | Para entender o caminho de um item na importação (desenho do fluxo) e todos os resultados possíveis (`rejected`, `linked`, `alreadyLinked`, `conflict`, `unmatched`, `created`), com quando cada um acontece. |
 | `docs/analysis/evolution.md`               | Para saber o que foi discutido e deixado de fora, por quê, e em que ordem faria sentido implementar. Consulte antes de propor uma evolução.                                                                   |
+| `docs/analysis/performance-and-scale.md`   | Para decisões de desempenho e escala: medições (custo da confirmação por item, vazamento de memória dos prepared statements), projeção para Postgres e ordem de melhorias.                                    |
 | `docs/analysis/entity-resolution-study.md` | Para escolher ou justificar uma técnica de matching. A seção 2 trata do trade-off entre precisão e recall, e a seção 5 da cascata recomendada.                                                                |
 | `docs/challenge/summary.md`                | Para o enunciado e as orientações da VTEX. Esta pasta é **local e confidencial**: está no `.gitignore` e nada dela deve ir para arquivos versionados. Prefira este resumo aos PDFs.                           |
 
@@ -100,6 +101,7 @@ Antes de considerar uma tarefa pronta, rode `typecheck`, `test` e `format:check`
   - **sem produto da marca por nenhum dos dois nomes (plano 011):** cria o produto, com o `NormalizedName`. Resultado `created` se o nome é inédito, `createdForReview` se ele existe com outra marca, com uma linha em `ProductReview` por produto parecido. Não cria se o SKU já aponta para algum produto (`conflict`), nem se o item é ambíguo (`unmatched`).
   - **princípio:** ligar ao produto errado é o erro caro; uma duplicata é recuperável por merge.
 - **Chave estrangeira:** sempre ative `foreign_keys = ON` na conexão (`openWorkingDatabase` já faz isso).
+- **Prepared statements:** no `CatalogDatabase`, use sempre `this.statement(sql)`, que reaproveita o statement. Nunca chame `db.prepare` a cada consulta: a memória nativa cresceria com o tamanho do arquivo (plano 016).
 - **Arquivo:** 269 itens. 268 correspondem a produtos existentes. O único sem correspondente é um teste de SQL injection com ID malformado.
 - **IDs:** únicos só por seller. A chave natural é `(SellerName, Id)`.
 - **Falsos positivos:** fuzzy matching ingênuo junta produtos diferentes (Multivitamin Men e Women, 0.94). A precisão vem antes do recall.
